@@ -82,7 +82,7 @@ class TrttPort:
             #self.current_action = self.policyGradient.choose_action(
             #    self.current_state)
             self.current_action = [0.35, 0.80]
-            action_json = {"hitting_parameters": self.current_action}
+            action_json = {"T": 0.25, "delta_t0": 0.8}
 
             # Export action to c++
             self.socket.send_json(action_json)
