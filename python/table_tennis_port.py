@@ -58,10 +58,10 @@ class TrttPort:
         pass
 
     def mainLoop(self):
-        '''
+        
         self.policyGradient = PolicyGradient(
             input_layer_size=6, output_layer_size=4, hidden_layer_size=20, learning_rate=0.01)
-        '''
+        
 
         for episode_counter in range(self.ep_num):
             print("\n\n------episode: {}".format(episode_counter+1))
