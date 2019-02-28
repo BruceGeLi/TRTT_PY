@@ -13,12 +13,14 @@ zmq to communicate with C++ code.
 import argparse
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.spatial import distance
 import os
 import math
 import zmq
 import time
 import json
 from policy_gradient import PolicyGradient
+from termcolor import colored
 
 
 class TrttPort:
@@ -29,7 +31,7 @@ class TrttPort:
 
         self.policyGradient = None
 
-        self.current_state = None
+        self.current_ball_state = None
         self.current_action = None
         self.current_reward = None
 
@@ -51,70 +53,84 @@ class TrttPort:
         pass
 
     def generateReward(self, landing_info):
-        reward = list()
+        target_coordinate = [0.35, -3.13, -0.99]
+        # compute Euclidean distance
+        # print(target_coordinate)
+        # print(landing_info)
+
+        dist = distance.euclidean(landing_info, target_coordinate)
+        # inverse it
+        dist_reverse = dist ** (-1)
+        reward = np.tanh(dist_reverse)
+
+        if not (0.3 < self.current_action[0] < 0.5):
+            reward = -0.3
+        if not (0.8 < self.current_action[1] < 0.9):
+            reward = -0.3
+
         return reward
 
     def recordTrainingData(self):
         pass
 
     def mainLoop(self):
-        
+
         self.policyGradient = PolicyGradient(
-            input_layer_size=6, output_layer_size=4, hidden_layer_size=20, learning_rate=0.01)
-        
+            ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=20, learning_rate=0.01, output_graph=False)
 
         for episode_counter in range(self.ep_num):
             print("\n\n------episode: {}".format(episode_counter+1))
             """
                 Get ball observation from Vrep sim
             """
+
             print("\nWaiting for ball observation...")
             ball_obs_json = self.socket.recv_json()
-            print("Ball observation received!")
-            
-            self.current_state = ball_obs_json["ball_obs"]
-            
-            
+            print("Ball observation received!\n\n")
+            self.current_ball_state = ball_obs_json["ball_obs"]
+
+            # print(self.current_ball_state)
+
             """
-                Get action parameters from Policy Gradient     
+                Get action parameters from Policy Gradient
             """
             print("\nComputing hitting parameters...")
-            #self.current_action = self.policyGradient.choose_action(
-            #    self.current_state)
-            self.current_action = [0.35, 0.80]
-            action_json = {"T": 0.25, "delta_t0": 0.8}
+            self.current_action = self.policyGradient.generate_action(
+                self.current_ball_state).tolist()
+            print("T: {:.2f}, delta_t0: {:.2f}".format(self.current_action[0], self.current_action[1]))
 
             # Export action to c++
+            action_json = {
+                "T": self.current_action[0], "delta_t0": self.current_action[1]}
             self.socket.send_json(action_json)
-            print("Hitting parameters computed!")
-
+            print("Hitting parameters computed!\n\n")
 
             """
                 Get ball landing info from Vrep sim
             """
             print("\nWaiting for ball landing info...")
             landing_info_json = self.socket.recv_json()
-            print("Ball landing info received!")
-            print("Transfer landing info into reward.")
+            print("Ball landing info received!\n\n")
+
             self.current_landing_info = landing_info_json["landing_info"]
 
+            """
+                Generate reward
+            """
+            #print("Transfer landing info into reward.")
             self.current_reward = self.generateReward(
                 self.current_landing_info)
-
-            #self.policyGradient.store_transition(
-            #    self.current_state, self.current_action, self.current_reward)
-
+            self.policyGradient.store_transition(
+                self.current_ball_state, self.current_action, self.current_reward)
             """
                 Update Policy
             """
             print("\nUpdating hitting policy...")
-            #self.policyGradient.learn()
-            # todo export updated to c++
-            policy_updated_json = {"policy_updated": True}
-            self.socket.send_json(policy_updated_json)
-            print("Policy updated!")
+            self.policyGradient.learn()
 
-            
+            policy_updated_json = {"policy_ready": True}
+            self.socket.send_json(policy_updated_json)
+            print("Policy updated!\n\n")
 
 
 if __name__ == "__main__":
@@ -133,7 +149,7 @@ if __name__ == "__main__":
     parser.add_argument('--ep_num', type=int, default=1000,
                         help="Number of episode to train the policy.")
 
-    #parser.add_argument('file', help='File name where the training data should be stored.')
+    # parser.add_argument('file', help='File name where the training data should be stored.')
 
     # to do add more parameters of the NN to parameters control
 

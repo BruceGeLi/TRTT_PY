@@ -17,10 +17,10 @@ tf.set_random_seed(int(time.time()))
 
 
 class PolicyGradient:
-    def __init__(self, state_dimension, action_dimension, hidden_layer_dimension=20, learning_rate=0.01, output_graph=False):
+    def __init__(self, ball_state_dimension, action_dimension, hidden_layer_dimension=20, learning_rate=0.01, output_graph=False):
 
         # dimension of ball trajectory parameters, 6
-        self.input_dimension = state_dimension
+        self.input_dimension = ball_state_dimension
 
         # dimension of robot action parameters,2
         self.output_dimension = action_dimension
@@ -47,26 +47,26 @@ class PolicyGradient:
             """
                  Place holders for Neural Network's computation
             """
-            # Ball states as NN's input
-            self.ball_states = tf.placeholder(
-                tf.float32, [1, self.input_dimension], name="ball_states")
+            # Ball state as NN's input
+            self.ball_state = tf.placeholder(
+                tf.float32, [None, self.input_dimension], name="ball_state")
 
             # NN's outputs are mean and variance of action's normal distribution
-            # With these distribution in hand, we can generate actions
-            # These actions are used here to compute loss function
-            self.actions = tf.placeholder(
-                tf.float32, [1, self.output_dimension], name="actions")
+            # With these distribution in hand, we can generate action
+            # These action are used here to compute loss function
+            self.action = tf.placeholder(
+                tf.float32, [None, self.output_dimension], name="action")
 
             # Reward to do Policy Gradient
             # Together with loss function, do back propagation of NN
             self.reward = tf.placeholder(
-                tf.float32, [1, 1], name="reward")
+                tf.float32, [None, 1], name="reward")
 
-        with tf.name_scope("Neural Network"):
+        with tf.name_scope("Neural_Network"):
             # Build hidden layer
-            # Consume ball states as input
+            # Consume ball state as input
             self.hidden_layer = tf.layers.dense(
-                inputs=self.ball_states,
+                inputs=self.ball_state,
                 units=self.hidden_layer_dimension,
                 activation=tf.nn.tanh,
                 kernel_initializer=tf.random_normal_initializer(
@@ -119,34 +119,31 @@ class PolicyGradient:
                 name="delta_t0_dev"
             )
 
-        # Declare normal distrubution of T and t0 independently
-        self.T_norm_dist = tf.distributions.Normal(self.T_mean, self.T_dev)
-        self.delta_t0_norm_dist = tf.distributions.Normal(
-            self.delta_t0_mean, self.delta_t0_dev)
+        # Declare normal distrubution of T and t0
+        self.dist = tf.distributions.Normal(
+            loc=[self.T_mean, self.delta_t0_mean], scale=[self.T_dev, self.delta_t0_dev])
 
         # Define logarithm of of these two probability distributions
-        # With log(M*N) = log(M) + log(N)
         # Consume action which are executed by the robot as input
         with tf.name_scope("Loss"):
-            log_prob = self.T_norm_dist.log_prob(tf.slice(self.actions, [0, 0], [1, 1])) + self.delta_t0_norm_dist.log_prob(tf.slice(self.actions, [0, 1], [1, 1]))
-            loss =  tf.reduce_mean(-log_prob * self.reward)
+            # log_prob is 2 dim vector
+            log_prob = self.dist.log_prob(self.action)
+            # reduce mean value along vector dimension
+            loss = tf.reduce_mean(-log_prob * self.reward)
 
         with tf.name_scope("Train"):
             # optimizor
             self.train_optimizer = tf.train.GradientDescentOptimizer(
                 self.learning_rate).minimize(loss)
 
-    def choose_action(self, input_states):
-        parameters = self.sess.run(self.output_layer, feed_dict={
-                                   self.input_states: input_states[np.newaxis, :]})
-        current_action = list()
-        for mean, sigma in zip(parameters[0::2], parameters[1::2]):
-            sub_action = np.random.normal(mean, sigma)
-            current_action.append(sub_action)
-        return current_action
+    def generate_action(self, ball_state):
+        action = self.sess.run(self.dist.sample(), feed_dict={
+                               self.ball_state: [ball_state]})
+        action = np.reshape(action, [-1])
+        return action
 
     def store_transition(self, state, action, reward):
-        self.current_state = state
+        self.current_ball_state = state
         self.current_action = action
         self.current_reward = reward
 
@@ -154,11 +151,11 @@ class PolicyGradient:
         # todo: normalize reward function
 
         self.sess.run(self.train_optimizer, feed_dict={
-            self.input_states: np.array(self.current_state),
-            self.output_parameters: np.array(self.current_action),
-            self.action_value: self.current_reward
+            self.ball_state: [self.current_ball_state],
+            self.action: [self.current_action],
+            self.reward: [[self.current_reward]]
         })
 
-        self.current_state = list()
-        self.current_action = list()
+        self.current_state = None
+        self.current_action = None
         self.current_reward = None
