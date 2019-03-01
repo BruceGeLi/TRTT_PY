@@ -62,12 +62,12 @@ class TrttPort:
         # inverse it
         dist_reverse = dist ** (-1)
         reward = np.tanh(dist_reverse)
-
-        if not (0.3 < self.current_action[0] < 0.5):
-            reward = -0.3
-        if not (0.8 < self.current_action[1] < 0.9):
-            reward = -0.3
-
+        """    
+        if (0.3 < self.current_action[0] < 0.5):
+            reward += 0.3
+        if (0.8 < self.current_action[1] < 0.9):
+            reward += 0.3
+        """
         return reward
 
     def recordTrainingData(self):
@@ -89,21 +89,28 @@ class TrttPort:
             print("Ball observation received!\n\n")
             self.current_ball_state = ball_obs_json["ball_obs"]
 
-            # print(self.current_ball_state)
-
+            print("Ball state:")
+            np.set_printoptions(precision=2)
+            print(np.array(self.current_ball_state))
+            
             """
                 Get action parameters from Policy Gradient
             """
             print("\nComputing hitting parameters...")
             self.current_action = self.policyGradient.generate_action(
                 self.current_ball_state).tolist()
-            print("T: {:.2f}, delta_t0: {:.2f}".format(self.current_action[0], self.current_action[1]))
+            print("Hitting parameters computed!\n================================\n")
+            print("====>           T: {:.2f}\n====>    delta_t0: {:.2f}\n\n================================\n".format(self.current_action[0], self.current_action[1]))
 
             # Export action to c++
             action_json = {
                 "T": self.current_action[0], "delta_t0": self.current_action[1]}
+            
+            #action_json = {
+            #    "T": 0.38, "delta_t0": 0.86}            
+            
             self.socket.send_json(action_json)
-            print("Hitting parameters computed!\n\n")
+            
 
             """
                 Get ball landing info from Vrep sim
@@ -117,7 +124,7 @@ class TrttPort:
             """
                 Generate reward
             """
-            #print("Transfer landing info into reward.")
+            # print("Transfer landing info into reward.")
             self.current_reward = self.generateReward(
                 self.current_landing_info)
             self.policyGradient.store_transition(
@@ -127,7 +134,7 @@ class TrttPort:
             """
             print("\nUpdating hitting policy...")
             self.policyGradient.learn()
-
+            time.sleep(150)
             policy_updated_json = {"policy_ready": True}
             self.socket.send_json(policy_updated_json)
             print("Policy updated!\n\n")

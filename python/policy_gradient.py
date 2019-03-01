@@ -75,8 +75,8 @@ class PolicyGradient:
                 name="Hidden_layer"
             )
 
-            # Build output layer for T mean
-            self.T_mean = tf.layers.dense(
+            # Build output layer for T mean raw, bounded[0, 1]
+            self.T_mean_raw = tf.layers.dense(
                 inputs=self.hidden_layer,
                 units=1,
                 activation=tf.nn.sigmoid,
@@ -86,8 +86,8 @@ class PolicyGradient:
                 name="T_mean"
             )
 
-            # Build output layer for T standard deviation
-            self.T_dev = tf.layers.dense(
+            # Build output layer for T standard deviation raw, bounded[0, 1]
+            self.T_dev_raw = tf.layers.dense(
                 inputs=self.hidden_layer,
                 units=1,
                 activation=tf.nn.sigmoid,
@@ -97,8 +97,8 @@ class PolicyGradient:
                 name="T_dev"
             )
 
-            # Build output layer for delta t0 mean
-            self.delta_t0_mean = tf.layers.dense(
+            # Build output layer for delta t0 mean raw, bounded[0, 1]
+            self.delta_t0_mean_raw = tf.layers.dense(
                 inputs=self.hidden_layer,
                 units=1,
                 activation=tf.nn.sigmoid,
@@ -108,8 +108,8 @@ class PolicyGradient:
                 name="delta_t0_mean"
             )
 
-            # Build output layer for delta t0 standard deviation
-            self.delta_t0_dev = tf.layers.dense(
+            # Build output layer for delta t0 standard deviation raw, bounded[0, 1]
+            self.delta_t0_dev_raw = tf.layers.dense(
                 inputs=self.hidden_layer,
                 units=1,
                 activation=tf.nn.sigmoid,
@@ -118,6 +118,31 @@ class PolicyGradient:
                 bias_initializer=tf.constant_initializer(0.1),
                 name="delta_t0_dev"
             )
+
+        # bound T mean from 0.3 to 0.5
+        T_mean_weight = tf.fill([1, 1], 0.2)
+        T_mean_bias = tf.fill([1], 0.3)
+
+        # bound T dev from 0.0 to 0.1
+        T_dev_weight = tf.fill([1, 1], 0.1)
+        T_dev_bias = tf.fill([1], 0.0)
+        
+        # bound delta_t0 mean from 0.8 to 0.9
+        delta_t0_mean_weight = tf.fill([1, 1], 0.1)
+        delta_t0_mean_bias = tf.fill([1], 0.8)        
+
+        # bound delta_t0 dev from 0.0 to 0.1
+        delta_t0_dev_weight = tf.fill([1, 1], 0.1)        
+        delta_t0_dev_bias = tf.fill([1], 0.0)
+
+        self.T_mean = tf.nn.xw_plus_b(x=self.T_mean_raw, weights=T_mean_weight, biases=T_mean_bias)
+
+        self.T_dev = tf.nn.xw_plus_b(x=self.T_dev_raw, weights=T_dev_weight, biases=T_dev_bias)
+        
+        self.delta_t0_mean = tf.nn.xw_plus_b(x=self.delta_t0_mean_raw, weights=delta_t0_mean_weight, biases=delta_t0_mean_bias)
+
+        self.delta_t0_dev = tf.nn.xw_plus_b(x=self.delta_t0_dev_raw, weights=delta_t0_dev_weight, biases=delta_t0_dev_bias)
+
 
         # Declare normal distrubution of T and t0
         self.dist = tf.distributions.Normal(
@@ -133,10 +158,12 @@ class PolicyGradient:
 
         with tf.name_scope("Train"):
             # optimizor
-            self.train_optimizer = tf.train.GradientDescentOptimizer(
+            #self.train_optimizer = tf.train.GradientDescentOptimizer(
+            #    self.learning_rate).minimize(loss)
+            self.train_optimizer = tf.train.AdamOptimizer(
                 self.learning_rate).minimize(loss)
 
-    def generate_action(self, ball_state):
+    def generate_action(self, ball_state):               
         action = self.sess.run(self.dist.sample(), feed_dict={
                                self.ball_state: [ball_state]})
         action = np.reshape(action, [-1])
