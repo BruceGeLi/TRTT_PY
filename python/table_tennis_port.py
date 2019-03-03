@@ -59,15 +59,12 @@ class TrttPort:
         # print(landing_info)
 
         dist = distance.euclidean(landing_info, target_coordinate)
-        # inverse it
-        dist_reverse = dist ** (-1)
-        reward = np.tanh(dist_reverse)
-        """    
-        if (0.3 < self.current_action[0] < 0.5):
-            reward += 0.3
-        if (0.8 < self.current_action[1] < 0.9):
-            reward += 0.3
-        """
+        if 0.6 < dist:
+            reward = 0
+        elif 0.3 < dist <= 0.6:
+            reward = np.cos(dist * 5 * np.pi / 6)
+        else:
+            reward = 5 * np.cos(dist * 5 * np.pi / 6)
         return reward
 
     def recordTrainingData(self):
@@ -92,7 +89,7 @@ class TrttPort:
             print("Ball state:")
             np.set_printoptions(precision=2)
             print(np.array(self.current_ball_state))
-            
+
             """
                 Get action parameters from Policy Gradient
             """
@@ -100,17 +97,17 @@ class TrttPort:
             self.current_action = self.policyGradient.generate_action(
                 self.current_ball_state).tolist()
             print("Hitting parameters computed!\n================================\n")
-            print("====>           T: {:.2f}\n====>    delta_t0: {:.2f}\n\n================================\n".format(self.current_action[0], self.current_action[1]))
+            print("====>           T: {:.8f}\n====>    delta_t0: {:.8f}\n\n================================\n".format(
+                self.current_action[0], self.current_action[1]))
 
             # Export action to c++
             action_json = {
                 "T": self.current_action[0], "delta_t0": self.current_action[1]}
-            
-            #action_json = {
-            #    "T": 0.38, "delta_t0": 0.86}            
-            
+
+            # action_json = {
+            #    "T": 0.38, "delta_t0": 0.86}
+
             self.socket.send_json(action_json)
-            
 
             """
                 Get ball landing info from Vrep sim
@@ -127,14 +124,14 @@ class TrttPort:
             # print("Transfer landing info into reward.")
             self.current_reward = self.generateReward(
                 self.current_landing_info)
+            print("Current reward: {:.2f}\n\n".format(self.current_reward))
             self.policyGradient.store_transition(
                 self.current_ball_state, self.current_action, self.current_reward)
             """
                 Update Policy
             """
-            print("\nUpdating hitting policy...")
+            print("Updating hitting policy...")
             self.policyGradient.learn()
-            time.sleep(150)
             policy_updated_json = {"policy_ready": True}
             self.socket.send_json(policy_updated_json)
             print("Policy updated!\n\n")
@@ -153,7 +150,7 @@ if __name__ == "__main__":
     parser.add_argument('--port', default=8181,
                         help="Port of the host to connect to")
 
-    parser.add_argument('--ep_num', type=int, default=1000,
+    parser.add_argument('--ep_num', type=int, default=1000000,
                         help="Number of episode to train the policy.")
 
     # parser.add_argument('file', help='File name where the training data should be stored.')
