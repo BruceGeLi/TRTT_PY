@@ -21,6 +21,7 @@ import time
 import json
 from policy_gradient import PolicyGradient
 from termcolor import colored
+import datetime
 
 
 class TrttPort:
@@ -83,23 +84,32 @@ class TrttPort:
 
             print("\nWaiting for ball observation...")
             ball_obs_json = self.socket.recv_json()
-            print("Ball observation received!\n\n")
+
+            print("Ball observation received!")
+            t1 = datetime.datetime.now()
+            #print(t1)
+            #print("\n\n")
             self.current_ball_state = ball_obs_json["ball_obs"]
 
-            print("Ball state:")
-            np.set_printoptions(precision=2)
-            print(np.array(self.current_ball_state))
+            #print("Ball state:")
+            # np.set_printoptions(precision=2)
+            # print(np.array(self.current_ball_state))
 
             """
                 Get action parameters from Policy Gradient
             """
             print("\nComputing hitting parameters...")
+            t2 = datetime.datetime.now()
+            #print(t2)
+            print("\n\n")
             self.current_action = self.policyGradient.generate_action(
                 self.current_ball_state).tolist()
             print("Hitting parameters computed!\n================================\n")
             print("====>           T: {:.8f}\n====>    delta_t0: {:.8f}\n\n================================\n".format(
                 self.current_action[0], self.current_action[1]))
-
+            t3 = datetime.datetime.now()
+            print(t3-t2)
+            print("\n\n")
             # Export action to c++
             action_json = {
                 "T": self.current_action[0], "delta_t0": self.current_action[1]}
@@ -108,7 +118,10 @@ class TrttPort:
             #    "T": 0.38, "delta_t0": 0.86}
 
             self.socket.send_json(action_json)
-
+            print("\nAction sent!")
+            t4 = datetime.datetime.now()
+            print(t4-t3)
+            print("\n\n")
             """
                 Get ball landing info from Vrep sim
             """
@@ -131,7 +144,13 @@ class TrttPort:
                 Update Policy
             """
             print("Updating hitting policy...")
+            t5 = datetime.datetime.now()
+            #print(t5)
+            print("\n\n")
             self.policyGradient.learn()
+            t6 = datetime.datetime.now()
+            print(t6-t5)
+            print("\n\n")
             policy_updated_json = {"policy_ready": True}
             self.socket.send_json(policy_updated_json)
             print("Policy updated!\n\n")

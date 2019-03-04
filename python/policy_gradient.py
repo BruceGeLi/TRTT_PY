@@ -148,6 +148,8 @@ class PolicyGradient:
         self.dist = tf.distributions.Normal(
             loc=[self.T_mean, self.delta_t0_mean], scale=[self.T_dev, self.delta_t0_dev])
 
+        self.sample = self.dist.sample()
+
         # Define logarithm of of these two probability distributions
         # Consume action which are executed by the robot as input
         with tf.name_scope("Loss"):
@@ -164,7 +166,7 @@ class PolicyGradient:
                 self.learning_rate).minimize(loss)
 
     def generate_action(self, ball_state):               
-        action = self.sess.run(self.dist.sample(), feed_dict={
+        action = self.sess.run(self.sample, feed_dict={
                                self.ball_state: [ball_state]})
         action = np.reshape(action, [-1])
         return action
