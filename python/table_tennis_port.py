@@ -20,7 +20,6 @@ import zmq
 import time
 import json
 from policy_gradient import PolicyGradient
-from termcolor import colored
 import datetime
 
 
@@ -56,9 +55,6 @@ class TrttPort:
     def generateReward(self, landing_info):
         target_coordinate = [0.35, -3.13, -0.99]
         # compute Euclidean distance
-        # print(target_coordinate)
-        # print(landing_info)
-
         dist = distance.euclidean(landing_info, target_coordinate)
         if 0.6 < dist:
             reward = 0
@@ -72,62 +68,58 @@ class TrttPort:
         pass
 
     def mainLoop(self):
-
         self.policyGradient = PolicyGradient(
             ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=20, learning_rate=0.01, output_graph=False)
 
         for episode_counter in range(self.ep_num):
-            print("\n\n------episode: {}".format(episode_counter+1))
+            """
+                Start of new episode
+            """
+            print("\n\n\n============================================")
+            print("\n------ Episode: {}\n".format(episode_counter+1))
+
+            print("------------------------------------")
+
             """
                 Get ball observation from Vrep sim
             """
-
-            print("\nWaiting for ball observation...")
+            print("\n--- Waiting for ball observation...")
             ball_obs_json = self.socket.recv_json()
 
-            print("Ball observation received!")
-            t1 = datetime.datetime.now()
-            #print(t1)
-            #print("\n\n")
+            print("--- Ball observation received!\n")
             self.current_ball_state = ball_obs_json["ball_obs"]
 
-            #print("Ball state:")
-            # np.set_printoptions(precision=2)
-            # print(np.array(self.current_ball_state))
-
+            print("------------------------------------")
             """
                 Get action parameters from Policy Gradient
             """
-            print("\nComputing hitting parameters...")
-            t2 = datetime.datetime.now()
-            #print(t2)
-            print("\n\n")
+            print("\n--- Computing hitting parameters...")
+            #t2 = datetime.datetime.now()
             self.current_action = self.policyGradient.generate_action(
                 self.current_ball_state).tolist()
-            print("Hitting parameters computed!\n================================\n")
-            print("====>           T: {:.8f}\n====>    delta_t0: {:.8f}\n\n================================\n".format(
+            print("--- Hitting parameters computed!\n\n")
+            print("====>           T: {:.8f}\n====>    delta_t0: {:.8f}".format(
                 self.current_action[0], self.current_action[1]))
-            t3 = datetime.datetime.now()
-            print(t3-t2)
-            print("\n\n")
-            # Export action to c++
+            #t3 = datetime.datetime.now()
+            # print(t3-t2)
+            # print("\n\n")
             action_json = {
                 "T": self.current_action[0], "delta_t0": self.current_action[1]}
 
+            # Try a fixed action
             # action_json = {
             #    "T": 0.38, "delta_t0": 0.86}
-
             self.socket.send_json(action_json)
-            print("\nAction sent!")
-            t4 = datetime.datetime.now()
-            print(t4-t3)
-            print("\n\n")
+            print("\n")
+            print("--- Action exported!\n")
+            print("------------------------------------")
+
             """
                 Get ball landing info from Vrep sim
             """
-            print("\nWaiting for ball landing info...")
+            print("\n--- Waiting for ball landing info...")
             landing_info_json = self.socket.recv_json()
-            print("Ball landing info received!\n\n")
+            print("--- Ball landing info received!\n")
 
             self.current_landing_info = landing_info_json["landing_info"]
 
@@ -137,23 +129,21 @@ class TrttPort:
             # print("Transfer landing info into reward.")
             self.current_reward = self.generateReward(
                 self.current_landing_info)
-            print("Current reward: {:.2f}\n\n".format(self.current_reward))
+            print("====>      Reward: {:.3f}\n".format(self.current_reward))
             self.policyGradient.store_transition(
                 self.current_ball_state, self.current_action, self.current_reward)
+            print("------------------------------------")
             """
                 Update Policy
             """
-            print("Updating hitting policy...")
-            t5 = datetime.datetime.now()
-            #print(t5)
-            print("\n\n")
+            print("\n--- Updating hitting policy...")
+            #t5 = datetime.datetime.now()
             self.policyGradient.learn()
-            t6 = datetime.datetime.now()
-            print(t6-t5)
-            print("\n\n")
+            #t6 = datetime.datetime.now()
+            # print(t6-t5)
             policy_updated_json = {"policy_ready": True}
             self.socket.send_json(policy_updated_json)
-            print("Policy updated!\n\n")
+            print("--- Policy updated!")
 
 
 if __name__ == "__main__":
