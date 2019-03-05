@@ -126,46 +126,61 @@ class PolicyGradient:
         # bound T dev from 0.0 to 0.1
         T_dev_weight = tf.fill([1, 1], 0.1)
         T_dev_bias = tf.fill([1], 0.0)
-        
+
         # bound delta_t0 mean from 0.8 to 0.9
         delta_t0_mean_weight = tf.fill([1, 1], 0.1)
-        delta_t0_mean_bias = tf.fill([1], 0.8)        
+        delta_t0_mean_bias = tf.fill([1], 0.8)
 
         # bound delta_t0 dev from 0.0 to 0.1
-        delta_t0_dev_weight = tf.fill([1, 1], 0.1)        
+        delta_t0_dev_weight = tf.fill([1, 1], 0.1)
         delta_t0_dev_bias = tf.fill([1], 0.0)
 
-        self.T_mean = tf.nn.xw_plus_b(x=self.T_mean_raw, weights=T_mean_weight, biases=T_mean_bias)
+        self.T_mean = tf.nn.xw_plus_b(
+            x=self.T_mean_raw, weights=T_mean_weight, biases=T_mean_bias)
 
-        self.T_dev = tf.nn.xw_plus_b(x=self.T_dev_raw, weights=T_dev_weight, biases=T_dev_bias)
-        
-        self.delta_t0_mean = tf.nn.xw_plus_b(x=self.delta_t0_mean_raw, weights=delta_t0_mean_weight, biases=delta_t0_mean_bias)
+        self.T_dev = tf.nn.xw_plus_b(
+            x=self.T_dev_raw, weights=T_dev_weight, biases=T_dev_bias)
 
-        self.delta_t0_dev = tf.nn.xw_plus_b(x=self.delta_t0_dev_raw, weights=delta_t0_dev_weight, biases=delta_t0_dev_bias)
+        self.delta_t0_mean = tf.nn.xw_plus_b(
+            x=self.delta_t0_mean_raw, weights=delta_t0_mean_weight, biases=delta_t0_mean_bias)
 
+        self.delta_t0_dev = tf.nn.xw_plus_b(
+            x=self.delta_t0_dev_raw, weights=delta_t0_dev_weight, biases=delta_t0_dev_bias)
 
         # Declare normal distrubution of T and t0
-        self.dist = tf.distributions.Normal(
-            loc=[self.T_mean, self.delta_t0_mean], scale=[self.T_dev, self.delta_t0_dev])
+        #self.dist = tf.distributions.Normal(
+        #    loc=[self.T_mean, self.delta_t0_mean], scale=[self.T_dev, self.delta_t0_dev])
+        self.T_dist = tf.distributions.Normal(loc=self.T_mean, scale=self.T_dev)
+        
+        self.delta_t0_dist = tf.distributions.Normal(loc=self.delta_t0_mean, scale=self.delta_t0_dev)
 
-        self.sample = self.dist.sample()
-
+        self.sample = [self.T_dist.sample(), self.delta_t0_dist.sample()]
+        print("sample shape: ", tf.shape(self.sample))
         # Define logarithm of of these two probability distributions
         # Consume action which are executed by the robot as input
         with tf.name_scope("Loss"):
             # log_prob is 2 dim vector
-            log_prob = self.dist.log_prob(self.action)
+            
+            #self.log_prob = self.dist.log_prob(self.action)
+            self.log_prob = [self.T_dist.log_prob([self.action[0][0]]), self.delta_t0_dist.log_prob([self.action[0][1]])]
+            
+            print("log prob shape:", tf.shape(self.log_prob))
+
             # reduce mean value along vector dimension
-            loss = tf.reduce_mean(-log_prob * self.reward)
+            self.loss = tf.reduce_mean(self.log_prob * -self.reward)            
 
         with tf.name_scope("Train"):
             # optimizor
-            #self.train_optimizer = tf.train.GradientDescentOptimizer(
+            # self.train_optimizer = tf.train.GradientDescentOptimizer(
             #    self.learning_rate).minimize(loss)
             self.train_optimizer = tf.train.AdamOptimizer(
-                self.learning_rate).minimize(loss)
+                self.learning_rate).minimize(self.loss)
 
-    def generate_action(self, ball_state):               
+        self.saver = tf.train.Saver()
+
+
+
+    def generate_action(self, ball_state):
         action = self.sess.run(self.sample, feed_dict={
                                self.ball_state: [ball_state]})
         action = np.reshape(action, [-1])
@@ -176,15 +191,38 @@ class PolicyGradient:
         self.current_action = action
         self.current_reward = reward
 
-    def learn(self):
+    def learn(self, save=False, save_dir_file="/tmp/RL_NN_parameters.ckpt"):
         # todo: normalize reward function
 
-        self.sess.run(self.train_optimizer, feed_dict={
+        [_, log_prob, loss] = self.sess.run([self.train_optimizer, self.log_prob, self.loss], feed_dict={
             self.ball_state: [self.current_ball_state],
             self.action: [self.current_action],
             self.reward: [[self.current_reward]]
         })
+        print("log prob:", log_prob, "  loss:", loss)
+        T_mean = self.sess.run(self.T_mean, feed_dict={
+                               self.ball_state: [self.current_ball_state]})
+        T_dev = self.sess.run(self.T_dev, feed_dict={
+                              self.ball_state: [self.current_ball_state]})
+        delta_t0_mean = self.sess.run(self.delta_t0_mean, feed_dict={
+                                      self.ball_state: [self.current_ball_state]})
+        delta_t0_dev = self.sess.run(self.delta_t0_dev, feed_dict={
+                                     self.ball_state: [self.current_ball_state]})
+        
+        T_mean = np.reshape(T_mean, [-1])
+        T_dev = np.reshape(T_dev,[-1])                                     
+        delta_t0_mean = np.reshape(delta_t0_mean, [-1])
+        delta_t0_dev = np.reshape(delta_t0_dev, [-1])
+        
+        print("\n       T_mean: {:.3f}".format(T_mean[0]))
+        print("        T_dev: {:.3f}".format(T_dev[0]))
+        print("delta_t0_mean: {:.3f}".format(delta_t0_mean[0]))
+        print(" delta_t0_dev: {:.3f}\n".format(delta_t0_dev[0]))
 
         self.current_state = None
         self.current_action = None
         self.current_reward = None
+
+        if save is True:
+            save_path = self.saver.save(self.sess, save_dir_file)
+            print("Model saved in path: {}".format(save_path))

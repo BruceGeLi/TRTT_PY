@@ -90,7 +90,7 @@ if __name__ == "__main__":
     parser.add_argument('save', help="File name where the picture should be stored")
     #parser.add_argument('--reward_range', nargs='+', type=float, help="range of reward")
     #parser.add_argument('--reward', nargs='+', type=int, help="Type of reward, 1 for ")
-    parser.add_argument('--max_range', nargs='+', type=float, help="Maximum range displayed in the picture")
+    parser.add_argument('--max_range', nargs='+',default=0.3, type=float, help="Maximum range displayed in the picture")
     args = parser.parse_args()
 
     analyseTime = AnalyseTime(args)

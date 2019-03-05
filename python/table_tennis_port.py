@@ -46,7 +46,7 @@ class TrttPort:
 
     def openSocket(self):
         self.context = zmq.Context()
-        self.socket = self.context.socket(zmq.REP)
+        self.socket = self.context.socket(zmq.REP)        
         self.socket.bind("tcp://*:8181")
 
     def closeSocket(self):
@@ -57,7 +57,7 @@ class TrttPort:
         # compute Euclidean distance
         dist = distance.euclidean(landing_info, target_coordinate)
         if 0.6 < dist:
-            reward = 0
+            reward = -0.1
         elif 0.3 < dist <= 0.6:
             reward = np.cos(dist * 5 * np.pi / 6)
         else:
@@ -98,8 +98,10 @@ class TrttPort:
             self.current_action = self.policyGradient.generate_action(
                 self.current_ball_state).tolist()
             print("--- Hitting parameters computed!\n\n")
-            print("====>           T: {:.8f}\n====>    delta_t0: {:.8f}".format(
+
+            print("====>           T: {:.3f}\n====>    delta_t0: {:.3f}".format(
                 self.current_action[0], self.current_action[1]))
+            
             #t3 = datetime.datetime.now()
             # print(t3-t2)
             # print("\n\n")
@@ -107,8 +109,7 @@ class TrttPort:
                 "T": self.current_action[0], "delta_t0": self.current_action[1]}
 
             # Try a fixed action
-            # action_json = {
-            #    "T": 0.38, "delta_t0": 0.86}
+            #action_json = {"T": 0.4875, "delta_t0": 0.802}
             self.socket.send_json(action_json)
             print("\n")
             print("--- Action exported!\n")
