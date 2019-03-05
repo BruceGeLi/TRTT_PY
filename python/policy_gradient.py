@@ -17,7 +17,7 @@ tf.set_random_seed(int(time.time()))
 
 
 class PolicyGradient:
-    def __init__(self, ball_state_dimension, action_dimension, hidden_layer_dimension=20, learning_rate=0.01, output_graph=False):
+    def __init__(self, ball_state_dimension, action_dimension, hidden_layer_dimension=20, learning_rate=0.01, output_graph=False, restore_dir_file=None):
 
         # dimension of ball trajectory parameters, 6
         self.input_dimension = ball_state_dimension
@@ -28,6 +28,8 @@ class PolicyGradient:
         self.hidden_layer_dimension = hidden_layer_dimension
 
         self.learning_rate = learning_rate
+
+        self.restore_dir_file = restore_dir_file
 
         self.current_state = list()
         self.current_action = list()
@@ -40,7 +42,13 @@ class PolicyGradient:
             # tf.summary.FileWriter("")
             pass
 
-        self.sess.run(tf.global_variables_initializer())
+        self.saver = tf.train.Saver()
+
+        if self.restore_dir_file is None:
+            self.sess.run(tf.global_variables_initializer())
+        else:
+            self.saver.restore(self.sess, self.restore_dir_file)
+            
 
     def build_net(self):
         with tf.name_scope("Inputs"):
@@ -148,11 +156,13 @@ class PolicyGradient:
             x=self.delta_t0_dev_raw, weights=delta_t0_dev_weight, biases=delta_t0_dev_bias)
 
         # Declare normal distrubution of T and t0
-        #self.dist = tf.distributions.Normal(
+        # self.dist = tf.distributions.Normal(
         #    loc=[self.T_mean, self.delta_t0_mean], scale=[self.T_dev, self.delta_t0_dev])
-        self.T_dist = tf.distributions.Normal(loc=self.T_mean, scale=self.T_dev)
-        
-        self.delta_t0_dist = tf.distributions.Normal(loc=self.delta_t0_mean, scale=self.delta_t0_dev)
+        self.T_dist = tf.distributions.Normal(
+            loc=self.T_mean, scale=self.T_dev)
+
+        self.delta_t0_dist = tf.distributions.Normal(
+            loc=self.delta_t0_mean, scale=self.delta_t0_dev)
 
         self.sample = [self.T_dist.sample(), self.delta_t0_dist.sample()]
         print("sample shape: ", tf.shape(self.sample))
@@ -160,14 +170,15 @@ class PolicyGradient:
         # Consume action which are executed by the robot as input
         with tf.name_scope("Loss"):
             # log_prob is 2 dim vector
-            
+
             #self.log_prob = self.dist.log_prob(self.action)
-            self.log_prob = [self.T_dist.log_prob([self.action[0][0]]), self.delta_t0_dist.log_prob([self.action[0][1]])]
-            
+            self.log_prob = [self.T_dist.log_prob(
+                [self.action[0][0]]), self.delta_t0_dist.log_prob([self.action[0][1]])]
+
             print("log prob shape:", tf.shape(self.log_prob))
 
             # reduce mean value along vector dimension
-            self.loss = tf.reduce_mean(self.log_prob * -self.reward)            
+            self.loss = tf.reduce_mean(self.log_prob * -self.reward)
 
         with tf.name_scope("Train"):
             # optimizor
@@ -176,9 +187,7 @@ class PolicyGradient:
             self.train_optimizer = tf.train.AdamOptimizer(
                 self.learning_rate).minimize(self.loss)
 
-        self.saver = tf.train.Saver()
-
-
+        
 
     def generate_action(self, ball_state):
         action = self.sess.run(self.sample, feed_dict={
@@ -208,12 +217,12 @@ class PolicyGradient:
                                       self.ball_state: [self.current_ball_state]})
         delta_t0_dev = self.sess.run(self.delta_t0_dev, feed_dict={
                                      self.ball_state: [self.current_ball_state]})
-        
+
         T_mean = np.reshape(T_mean, [-1])
-        T_dev = np.reshape(T_dev,[-1])                                     
+        T_dev = np.reshape(T_dev, [-1])
         delta_t0_mean = np.reshape(delta_t0_mean, [-1])
         delta_t0_dev = np.reshape(delta_t0_dev, [-1])
-        
+
         print("\n       T_mean: {:.3f}".format(T_mean[0]))
         print("        T_dev: {:.3f}".format(T_dev[0]))
         print("delta_t0_mean: {:.3f}".format(delta_t0_mean[0]))

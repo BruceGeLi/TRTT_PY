@@ -28,9 +28,12 @@ class TrttPort:
         self.host = args.host
         self.port = args.port
         self.ep_num = args.ep_num
+        self.save_num = args.save_num
+        self.save_dir_file = args.save_dir_file
+        self.restore_dir_file = args.restore_dir_file
 
         self.policyGradient = None
-
+        self.save_iterator = 0
         self.current_ball_state = None
         self.current_action = None
         self.current_reward = None
@@ -46,7 +49,7 @@ class TrttPort:
 
     def openSocket(self):
         self.context = zmq.Context()
-        self.socket = self.context.socket(zmq.REP)        
+        self.socket = self.context.socket(zmq.REP)
         self.socket.bind("tcp://*:8181")
 
     def closeSocket(self):
@@ -69,7 +72,7 @@ class TrttPort:
 
     def mainLoop(self):
         self.policyGradient = PolicyGradient(
-            ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=20, learning_rate=0.01, output_graph=False)
+            ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=20, learning_rate=0.01, output_graph=False, restore_dir_file=self.restore_dir_file)
 
         for episode_counter in range(self.ep_num):
             """
@@ -101,7 +104,7 @@ class TrttPort:
 
             print("====>           T: {:.3f}\n====>    delta_t0: {:.3f}".format(
                 self.current_action[0], self.current_action[1]))
-            
+
             #t3 = datetime.datetime.now()
             # print(t3-t2)
             # print("\n\n")
@@ -139,7 +142,16 @@ class TrttPort:
             """
             print("\n--- Updating hitting policy...")
             #t5 = datetime.datetime.now()
-            self.policyGradient.learn()
+
+            if self.save_num is not 0:
+                self.save_iterator += 1
+                self.save_iterator%=self.save_num
+                if self.save_iterator is 0:
+                    self.policyGradient.learn(save=True, save_dir_file=self.save_dir_file)                    
+                else:
+                    self.policyGradient.learn()
+            else:
+                self.policyGradient.learn()
             #t6 = datetime.datetime.now()
             # print(t6-t5)
             policy_updated_json = {"policy_ready": True}
@@ -162,11 +174,13 @@ if __name__ == "__main__":
 
     parser.add_argument('--ep_num', type=int, default=1000000,
                         help="Number of episode to train the policy.")
+    parser.add_argument('--save_num', type=int, default=0,
+                        help="Save the Neural network parameters for every N episode.")
+    parser.add_argument('--save_dir_file', default='/tmp/RL_NN_parameters.ckpt',
+                        help="Dir and file name where the parameters shall be stored.")
 
-    # parser.add_argument('file', help='File name where the training data should be stored.')
-
-    # to do add more parameters of the NN to parameters control
-
+    parser.add_argument('--restore_dir_file', default=None,
+                        help="Dir and file where the parameters shall be load.")
     args = parser.parse_args()
 
     pg = TrttPort(args)
