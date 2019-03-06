@@ -91,7 +91,7 @@ class PolicyGradient:
                 kernel_initializer=tf.random_normal_initializer(
                     mean=0, stddev=0.3),
                 bias_initializer=tf.constant_initializer(0.1),
-                name="T_mean"
+                name="T_mean_raw"
             )
 
             # Build output layer for T standard deviation raw, bounded[0, 1]
@@ -102,7 +102,7 @@ class PolicyGradient:
                 kernel_initializer=tf.random_normal_initializer(
                     mean=0, stddev=0.3),
                 bias_initializer=tf.constant_initializer(0.1),
-                name="T_dev"
+                name="T_dev_raw"
             )
 
             # Build output layer for delta t0 mean raw, bounded[0, 1]
@@ -113,7 +113,7 @@ class PolicyGradient:
                 kernel_initializer=tf.random_normal_initializer(
                     mean=0, stddev=0.3),
                 bias_initializer=tf.constant_initializer(0.1),
-                name="delta_t0_mean"
+                name="delta_t0_mean_raw"
             )
 
             # Build output layer for delta t0 standard deviation raw, bounded[0, 1]
@@ -124,7 +124,7 @@ class PolicyGradient:
                 kernel_initializer=tf.random_normal_initializer(
                     mean=0, stddev=0.3),
                 bias_initializer=tf.constant_initializer(0.1),
-                name="delta_t0_dev"
+                name="delta_t0_dev_raw"
             )
 
         # bound T mean from 0.3 to 0.5
@@ -155,36 +155,31 @@ class PolicyGradient:
         self.delta_t0_dev = tf.nn.xw_plus_b(
             x=self.delta_t0_dev_raw, weights=delta_t0_dev_weight, biases=delta_t0_dev_bias)
 
-        # Declare normal distrubution of T and t0
-        # self.dist = tf.distributions.Normal(
-        #    loc=[self.T_mean, self.delta_t0_mean], scale=[self.T_dev, self.delta_t0_dev])
+        # Declare normal distribution of T and t0
         self.T_dist = tf.distributions.Normal(
             loc=self.T_mean, scale=self.T_dev)
-
         self.delta_t0_dist = tf.distributions.Normal(
             loc=self.delta_t0_mean, scale=self.delta_t0_dev)
 
+        # Sample an action from distribution
         self.sample = [self.T_dist.sample(), self.delta_t0_dist.sample()]
-        print("sample shape: ", tf.shape(self.sample))
+        #print("sample shape: ", tf.shape(self.sample))
+        
         # Define logarithm of of these two probability distributions
         # Consume action which are executed by the robot as input
         with tf.name_scope("Loss"):
-            # log_prob is 2 dim vector
-
-            #self.log_prob = self.dist.log_prob(self.action)
+            # log_prob is 2 dim vector        
             self.log_prob = [self.T_dist.log_prob(
                 [self.action[0][0]]), self.delta_t0_dist.log_prob([self.action[0][1]])]
 
-            print("log prob shape:", tf.shape(self.log_prob))
+            #print("log prob shape:", tf.shape(self.log_prob))
 
             # reduce mean value along vector dimension
             self.loss = tf.reduce_mean(self.log_prob * -self.reward)
 
         with tf.name_scope("Train"):
             # optimizor
-            # self.train_optimizer = tf.train.GradientDescentOptimizer(
-            #    self.learning_rate).minimize(loss)
-            self.train_optimizer = tf.train.AdamOptimizer(
+            self.train_optimizer = tf.train.GradientDescentOptimizer(
                 self.learning_rate).minimize(self.loss)
 
         
