@@ -74,6 +74,14 @@ class TrttPort:
         self.policyGradient = PolicyGradient(
             ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=20, learning_rate=0.01, output_graph=False, restore_dir_file=self.restore_dir_file)
 
+        """
+        If Tensorflow-gpu is used, the first action will take quite long time to compute
+        In case of Tensorflow-gpu, do one dummy action generation to activate the NN
+        """
+        self.dummy_ball_state = np.zeros((6)).tolist()
+        dummy_action = self.policyGradient.generate_action(self.dummy_ball_state)
+
+
         for episode_counter in range(self.ep_num):
             """
                 Start of new episode
@@ -112,7 +120,7 @@ class TrttPort:
                 "T": self.current_action[0], "delta_t0": self.current_action[1]}
 
             # Try a fixed action
-            #action_json = {"T": 0.4875, "delta_t0": 0.802}
+            #action_json = {"T": 0.39, "delta_t0": 0.83}
             self.socket.send_json(action_json)
             print("\n")
             print("--- Action exported!\n")
