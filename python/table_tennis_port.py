@@ -58,15 +58,28 @@ class TrttPort:
         pass
 
     def generateReward(self, landing_info, distance_info):
-        racket_min_dist = [0.02]
-        target_coordinate = [0.35, -3.13, -0.99]
-        # compute Euclidean distance
-        distance_to_racket = distance.euclidean(distance_info, racket_min_dist)
-        distance_to_target = distance.euclidean(
-            landing_info, target_coordinate)
+        reward = 0
 
-        #reward = -10 * distance_to_racket - distance_to_target
-        reward = -10 * distance_to_racket
+        # First level of reward represents hitting info
+        hitted = False
+
+        if distance_info[0] <= 0.0776:  # ball was hitted
+            reward += 0
+            hitted = True
+        else:
+            reward += -10 * distance_info[0] + 0.776
+            hitted = False
+
+        # Second level of reward, landing position
+        target_coordinate = [0.35, -3.13, -0.99]        
+        # compute Euclidean distance in x and y coordinate space
+        distance_to_target = distance.euclidean(
+            landing_info[0:2], target_coordinate[0:2])
+        if hitted is True and distance_to_target <= 3.0:
+            reward += -0.1 * distance_to_target
+        else:
+            reward += -0.3
+        
         return reward
 
     def recordTrainingData(self):
