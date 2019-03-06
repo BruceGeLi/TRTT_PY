@@ -180,15 +180,15 @@ if __name__ == "__main__":
     parser.add_argument('--port', default=8181,
                         help="Port of the host to connect to")
 
-    parser.add_argument('--ep_num', type=int, default=1000000,
-                        help="Number of episode to train the policy.")
+    parser.add_argument('--ep_num', type=int, default=10000,
+                        help="Number of total episode to train the policy, e.g. 10000.")
     parser.add_argument('--save_num', type=int, default=0,
-                        help="Save the Neural network parameters for every N episode.")
-    parser.add_argument('--save_dir_file', default='/tmp/RL_NN_parameters.ckpt',
-                        help="Dir and file name where the parameters shall be stored.")
+                        help="Save the Neural network parameters for every N episode, e.g. 200")
+    parser.add_argument('--save_dir_file', default='/tmp/RL_NN_parameters',
+                        help="Dir and file name (without .ckpt suffix) where the parameters shall be stored, e.g. /tmp/parameters. Time stamp will be added automatically.")
 
     parser.add_argument('--restore_dir_file', default=None,
-                        help="Dir and file where the parameters shall be load.")
+                        help="Dir and file name where the parameters shall be load, e.g. /tmp/parameters")
     args = parser.parse_args()
 
     pg = TrttPort(args)

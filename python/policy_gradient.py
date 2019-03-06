@@ -10,6 +10,8 @@ Tensorflow
 import tensorflow as tf
 import numpy as np
 import time
+from datetime import datetime
+import pathlib
 
 # set random seed
 np.random.seed(int(time.time()))
@@ -43,12 +45,16 @@ class PolicyGradient:
             pass
 
         self.saver = tf.train.Saver()
-
+        
         if self.restore_dir_file is None:
             self.sess.run(tf.global_variables_initializer())
+
         else:
-            self.saver.restore(self.sess, self.restore_dir_file)
-            
+            path = pathlib.Path(self.restore_dir_file)
+            path_file_suffix = str(path.resolve().parent) + str(path.resolve().anchor) + str(path.resolve().stem) + ".ckpt"
+            self.saver.restore(self.sess, path_file_suffix)
+            print("\n\nTensorflow restored parameters from: ",
+                  path_file_suffix)
 
     def build_net(self):
         with tf.name_scope("Inputs"):
@@ -164,11 +170,11 @@ class PolicyGradient:
         # Sample an action from distribution
         self.sample = [self.T_dist.sample(), self.delta_t0_dist.sample()]
         #print("sample shape: ", tf.shape(self.sample))
-        
+
         # Define logarithm of of these two probability distributions
         # Consume action which are executed by the robot as input
         with tf.name_scope("Loss"):
-            # log_prob is 2 dim vector        
+            # log_prob is 2 dim vector
             self.log_prob = [self.T_dist.log_prob(
                 [self.action[0][0]]), self.delta_t0_dist.log_prob([self.action[0][1]])]
 
@@ -182,8 +188,6 @@ class PolicyGradient:
             self.train_optimizer = tf.train.GradientDescentOptimizer(
                 self.learning_rate).minimize(self.loss)
 
-        
-
     def generate_action(self, ball_state):
         action = self.sess.run(self.sample, feed_dict={
                                self.ball_state: [ball_state]})
@@ -195,7 +199,7 @@ class PolicyGradient:
         self.current_action = action
         self.current_reward = reward
 
-    def learn(self, save=False, save_dir_file="/tmp/RL_NN_parameters.ckpt"):
+    def learn(self, save=False, save_dir_file="/tmp/RL_NN_parameters"):
         # todo: normalize reward function
 
         [_, log_prob, loss] = self.sess.run([self.train_optimizer, self.log_prob, self.loss], feed_dict={
@@ -228,5 +232,12 @@ class PolicyGradient:
         self.current_reward = None
 
         if save is True:
-            save_path = self.saver.save(self.sess, save_dir_file)
-            print("Model saved in path: {}".format(save_path))
+            now = datetime.now()
+
+            path = pathlib.Path(save_dir_file)
+            
+            save_file_suffix = str(path.resolve().parent) + str(path.resolve().anchor) + str(path.stem) + "_" + "{:04d}".format(now.year) + "{:02d}".format(now.month) + "{:02d}".format(now.day) + "_" + "{:02d}".format(now.hour) + "{:02d}".format(now.minute) + "{:02d}".format(now.second) + ".ckpt"
+
+            save_path = self.saver.save(self.sess, save_file_suffix)
+            print("Tensorflow saved parameters into: ", save_path)
+
