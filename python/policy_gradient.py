@@ -137,17 +137,17 @@ class PolicyGradient:
         T_mean_weight = tf.fill([1, 1], 0.2)
         T_mean_bias = tf.fill([1], 0.3)
 
-        # bound T dev from 0.0 to 0.1
-        T_dev_weight = tf.fill([1, 1], 0.1)
-        T_dev_bias = tf.fill([1], 0.0)
+        # bound T dev from 0.01 to 0.02
+        T_dev_weight = tf.fill([1, 1], 0.01)
+        T_dev_bias = tf.fill([1], 0.01)
 
         # bound delta_t0 mean from 0.8 to 0.9
         delta_t0_mean_weight = tf.fill([1, 1], 0.1)
         delta_t0_mean_bias = tf.fill([1], 0.8)
 
-        # bound delta_t0 dev from 0.0 to 0.1
-        delta_t0_dev_weight = tf.fill([1, 1], 0.1)
-        delta_t0_dev_bias = tf.fill([1], 0.0)
+        # bound delta_t0 dev from 0.01 to 0.02
+        delta_t0_dev_weight = tf.fill([1, 1], 0.01)
+        delta_t0_dev_bias = tf.fill([1], 0.01)
 
         self.T_mean = tf.nn.xw_plus_b(
             x=self.T_mean_raw, weights=T_mean_weight, biases=T_mean_bias)
@@ -185,7 +185,7 @@ class PolicyGradient:
 
         with tf.name_scope("Train"):
             # optimizor
-            self.train_optimizer = tf.train.GradientDescentOptimizer(
+            self.train_optimizer = tf.train.AdamOptimizer(
                 self.learning_rate).minimize(self.loss)
 
     def generate_action(self, ball_state):

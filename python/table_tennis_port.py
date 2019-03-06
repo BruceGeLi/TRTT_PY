@@ -28,6 +28,7 @@ class TrttPort:
         self.host = args.host
         self.port = args.port
         self.ep_num = args.ep_num
+        self.learning_rate = args.lr
         self.save_num = args.save_num
         self.save_dir_file = args.save_dir_file
         self.restore_dir_file = args.restore_dir_file
@@ -39,6 +40,7 @@ class TrttPort:
         self.current_reward = None
 
         self.current_landing_info = None
+        self.current_ball_racket_dist_info = None
 
         self.context = None
         self.socket = None
@@ -55,16 +57,16 @@ class TrttPort:
     def closeSocket(self):
         pass
 
-    def generateReward(self, landing_info):
+    def generateReward(self, landing_info, distance_info):
+        racket_min_dist = [0.02]
         target_coordinate = [0.35, -3.13, -0.99]
         # compute Euclidean distance
-        dist = distance.euclidean(landing_info, target_coordinate)
-        if 0.6 < dist:
-            reward = -0.1
-        elif 0.3 < dist <= 0.6:
-            reward = np.cos(dist * 5 * np.pi / 6)
-        else:
-            reward = 5 * np.cos(dist * 5 * np.pi / 6)
+        distance_to_racket = distance.euclidean(distance_info, racket_min_dist)
+        distance_to_target = distance.euclidean(
+            landing_info, target_coordinate)
+
+        #reward = -10 * distance_to_racket - distance_to_target
+        reward = -10 * distance_to_racket
         return reward
 
     def recordTrainingData(self):
@@ -72,15 +74,15 @@ class TrttPort:
 
     def mainLoop(self):
         self.policyGradient = PolicyGradient(
-            ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=20, learning_rate=0.01, output_graph=False, restore_dir_file=self.restore_dir_file)
+            ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=20, learning_rate=self.learning_rate, output_graph=False, restore_dir_file=self.restore_dir_file)
 
         """
         If Tensorflow-gpu is used, the first action will take quite long time to compute
         In case of Tensorflow-gpu, do one dummy action generation to activate the NN
         """
         self.dummy_ball_state = np.zeros((6)).tolist()
-        dummy_action = self.policyGradient.generate_action(self.dummy_ball_state)
-
+        dummy_action = self.policyGradient.generate_action(
+            self.dummy_ball_state)
 
         for episode_counter in range(self.ep_num):
             """
@@ -120,27 +122,28 @@ class TrttPort:
                 "T": self.current_action[0], "delta_t0": self.current_action[1]}
 
             # Try a fixed action
-            #action_json = {"T": 0.39, "delta_t0": 0.83}
+            #action_json = {"T": 0.343, "delta_t0": 0.835}
             self.socket.send_json(action_json)
             print("\n")
             print("--- Action exported!\n")
             print("------------------------------------")
 
             """
-                Get ball landing info from Vrep sim
+                Get ball reward info from Vrep sim
             """
-            print("\n--- Waiting for ball landing info...")
-            landing_info_json = self.socket.recv_json()
-            print("--- Ball landing info received!\n")
+            print("\n--- Waiting for ball reward info...")
+            reward_info_json = self.socket.recv_json()
+            print("--- Ball reward info received!\n")
 
-            self.current_landing_info = landing_info_json["landing_info"]
+            self.current_landing_info = reward_info_json["landing_point"]
+            self.current_ball_racket_dist_info = reward_info_json["min_distance"]
 
             """
                 Generate reward
             """
             # print("Transfer landing info into reward.")
             self.current_reward = self.generateReward(
-                self.current_landing_info)
+                self.current_landing_info, self.current_ball_racket_dist_info)
             print("====>      Reward: {:.3f}\n".format(self.current_reward))
             self.policyGradient.store_transition(
                 self.current_ball_state, self.current_action, self.current_reward)
@@ -153,9 +156,10 @@ class TrttPort:
 
             if self.save_num is not 0:
                 self.save_iterator += 1
-                self.save_iterator%=self.save_num
+                self.save_iterator %= self.save_num
                 if self.save_iterator is 0:
-                    self.policyGradient.learn(save=True, save_dir_file=self.save_dir_file)                    
+                    self.policyGradient.learn(
+                        save=True, save_dir_file=self.save_dir_file)
                 else:
                     self.policyGradient.learn()
             else:
@@ -180,6 +184,8 @@ if __name__ == "__main__":
     parser.add_argument('--port', default=8181,
                         help="Port of the host to connect to")
 
+    parser.add_argument('--lr', default=0.01, type=float,
+                        help="Learning rate.")
     parser.add_argument('--ep_num', type=int, default=10000,
                         help="Number of total episode to train the policy, e.g. 10000.")
     parser.add_argument('--save_num', type=int, default=0,
