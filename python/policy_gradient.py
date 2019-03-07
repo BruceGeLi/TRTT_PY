@@ -19,7 +19,7 @@ tf.set_random_seed(int(time.time()))
 
 
 class PolicyGradient:
-    def __init__(self, ball_state_dimension, action_dimension, hidden_layer_dimension=20, learning_rate=0.01, output_graph=False, restore_dir_file=None):
+    def __init__(self, on_train=True, ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=20, learning_rate=0.01, output_graph=False, restore_dir_file=None):
 
         # dimension of ball trajectory parameters, 6
         self.input_dimension = ball_state_dimension
@@ -32,6 +32,7 @@ class PolicyGradient:
         self.learning_rate = learning_rate
 
         self.restore_dir_file = restore_dir_file
+        self.on_train = on_train
 
         self.current_state = list()
         self.current_action = list()
@@ -41,17 +42,17 @@ class PolicyGradient:
         self.sess = tf.Session()
 
         if output_graph is True:
-            # tf.summary.FileWriter("")
-            pass
+            tf.summary.FileWriter("/tmp/graph", self.sess.graph)
 
         self.saver = tf.train.Saver()
-        
+
         if self.restore_dir_file is None:
             self.sess.run(tf.global_variables_initializer())
 
         else:
             path = pathlib.Path(self.restore_dir_file)
-            path_file_suffix = str(path.resolve().parent) + str(path.resolve().anchor) + str(path.resolve().stem) + ".ckpt"
+            path_file_suffix = str(path.resolve(
+            ).parent) + str(path.resolve().anchor) + str(path.resolve().stem) + ".ckpt"
             self.saver.restore(self.sess, path_file_suffix)
             print("\n\nTensorflow restored parameters from: ",
                   path_file_suffix)
@@ -79,57 +80,61 @@ class PolicyGradient:
         with tf.name_scope("Neural_Network"):
             # Build hidden layer
             # Consume ball state as input
-            self.hidden_layer = tf.layers.dense(
+            self.hidden_layer1 = tf.layers.dense(
                 inputs=self.ball_state,
                 units=self.hidden_layer_dimension,
                 activation=tf.nn.tanh,
                 kernel_initializer=tf.random_normal_initializer(
                     mean=0, stddev=0.3),
-                bias_initializer=tf.constant_initializer(0.1),
-                name="Hidden_layer"
+                name="Hidden_layer1"
+            )
+
+            self.hidden_layer2 = tf.layers.dense(
+                inputs=self.hidden_layer1,
+                units=self.hidden_layer_dimension,
+                activation=tf.nn.tanh,
+                kernel_initializer=tf.random_normal_initializer(
+                    mean=0, stddev=0.3),
+                name="Hidden_layer2"
             )
 
             # Build output layer for T mean raw, bounded[0, 1]
             self.T_mean_raw = tf.layers.dense(
-                inputs=self.hidden_layer,
+                inputs=self.hidden_layer2,
                 units=1,
                 activation=tf.nn.sigmoid,
                 kernel_initializer=tf.random_normal_initializer(
                     mean=0, stddev=0.3),
-                bias_initializer=tf.constant_initializer(0.1),
                 name="T_mean_raw"
             )
 
             # Build output layer for T standard deviation raw, bounded[0, 1]
             self.T_dev_raw = tf.layers.dense(
-                inputs=self.hidden_layer,
+                inputs=self.hidden_layer2,
                 units=1,
                 activation=tf.nn.sigmoid,
                 kernel_initializer=tf.random_normal_initializer(
                     mean=0, stddev=0.3),
-                bias_initializer=tf.constant_initializer(0.1),
                 name="T_dev_raw"
             )
 
             # Build output layer for delta t0 mean raw, bounded[0, 1]
             self.delta_t0_mean_raw = tf.layers.dense(
-                inputs=self.hidden_layer,
+                inputs=self.hidden_layer2,
                 units=1,
                 activation=tf.nn.sigmoid,
                 kernel_initializer=tf.random_normal_initializer(
                     mean=0, stddev=0.3),
-                bias_initializer=tf.constant_initializer(0.1),
                 name="delta_t0_mean_raw"
             )
 
             # Build output layer for delta t0 standard deviation raw, bounded[0, 1]
             self.delta_t0_dev_raw = tf.layers.dense(
-                inputs=self.hidden_layer,
+                inputs=self.hidden_layer2,
                 units=1,
                 activation=tf.nn.sigmoid,
                 kernel_initializer=tf.random_normal_initializer(
                     mean=0, stddev=0.3),
-                bias_initializer=tf.constant_initializer(0.1),
                 name="delta_t0_dev_raw"
             )
 
@@ -145,9 +150,9 @@ class PolicyGradient:
         delta_t0_mean_weight = tf.fill([1, 1], 0.1)
         delta_t0_mean_bias = tf.fill([1], 0.8)
 
-        # bound delta_t0 dev from 0.01 to 0.02
-        delta_t0_dev_weight = tf.fill([1, 1], 0.01)
-        delta_t0_dev_bias = tf.fill([1], 0.01)
+        # bound delta_t0 dev from 0.005 to 0.01
+        delta_t0_dev_weight = tf.fill([1, 1], 0.005)
+        delta_t0_dev_bias = tf.fill([1], 0.005)
 
         self.T_mean = tf.nn.xw_plus_b(
             x=self.T_mean_raw, weights=T_mean_weight, biases=T_mean_bias)
@@ -189,10 +194,16 @@ class PolicyGradient:
                 self.learning_rate).minimize(self.loss)
 
     def generate_action(self, ball_state):
-        action = self.sess.run(self.sample, feed_dict={
-                               self.ball_state: [ball_state]})
-        action = np.reshape(action, [-1])
-        return action
+        if self.on_train is True:
+            action = self.sess.run(self.sample, feed_dict={
+                self.ball_state: [ball_state]})
+            action = np.reshape(action, [-1])
+            return action
+        else:
+            action = [self.sess.run(self.T_mean, feed_dict={self.ball_state: [ball_state]}), self.sess.run(
+                self.delta_t0_mean, feed_dict={self.ball_state: [ball_state]})]
+            action = np.reshape(action, [-1])
+            return action
 
     def store_transition(self, state, action, reward):
         self.current_ball_state = state
@@ -201,21 +212,36 @@ class PolicyGradient:
 
     def learn(self, save=False, save_dir_file="/tmp/RL_NN_parameters"):
         # todo: normalize reward function
+        if self.on_train is True:
+            [_, log_prob, loss] = self.sess.run([self.train_optimizer, self.log_prob, self.loss], feed_dict={
+                self.ball_state: [self.current_ball_state],
+                self.action: [self.current_action],
+                self.reward: [[self.current_reward]]
+            })
+            print("log prob:", log_prob, "  loss:", loss)
 
-        [_, log_prob, loss] = self.sess.run([self.train_optimizer, self.log_prob, self.loss], feed_dict={
-            self.ball_state: [self.current_ball_state],
-            self.action: [self.current_action],
-            self.reward: [[self.current_reward]]
-        })
-        print("log prob:", log_prob, "  loss:", loss)
+            if save is True:
+                now = datetime.now()
+
+                path = pathlib.Path(save_dir_file)
+
+                save_file_suffix = str(path.resolve().parent) + str(path.resolve().anchor) + str(path.stem) + "_" + "{:04d}".format(now.year) + "{:02d}".format(
+                    now.month) + "{:02d}".format(now.day) + "_" + "{:02d}".format(now.hour) + "{:02d}".format(now.minute) + "{:02d}".format(now.second) + ".ckpt"
+
+                save_path = self.saver.save(self.sess, save_file_suffix)
+                print("Tensorflow saved parameters into: ", save_path)
+        
+        else:
+            print("NN is not learning! Deterministic policy is used. ")
+
         T_mean = self.sess.run(self.T_mean, feed_dict={
-                               self.ball_state: [self.current_ball_state]})
+                    self.ball_state: [self.current_ball_state]})
         T_dev = self.sess.run(self.T_dev, feed_dict={
-                              self.ball_state: [self.current_ball_state]})
+                            self.ball_state: [self.current_ball_state]})
         delta_t0_mean = self.sess.run(self.delta_t0_mean, feed_dict={
-                                      self.ball_state: [self.current_ball_state]})
+                                    self.ball_state: [self.current_ball_state]})
         delta_t0_dev = self.sess.run(self.delta_t0_dev, feed_dict={
-                                     self.ball_state: [self.current_ball_state]})
+                                    self.ball_state: [self.current_ball_state]})
 
         T_mean = np.reshape(T_mean, [-1])
         T_dev = np.reshape(T_dev, [-1])
@@ -230,14 +256,3 @@ class PolicyGradient:
         self.current_state = None
         self.current_action = None
         self.current_reward = None
-
-        if save is True:
-            now = datetime.now()
-
-            path = pathlib.Path(save_dir_file)
-            
-            save_file_suffix = str(path.resolve().parent) + str(path.resolve().anchor) + str(path.stem) + "_" + "{:04d}".format(now.year) + "{:02d}".format(now.month) + "{:02d}".format(now.day) + "_" + "{:02d}".format(now.hour) + "{:02d}".format(now.minute) + "{:02d}".format(now.second) + ".ckpt"
-
-            save_path = self.saver.save(self.sess, save_file_suffix)
-            print("Tensorflow saved parameters into: ", save_path)
-

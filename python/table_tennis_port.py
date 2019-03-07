@@ -27,8 +27,18 @@ class TrttPort:
     def __init__(self, args):
         self.host = args.host
         self.port = args.port
+        
+        if args.train=='true':
+            self.on_train = True
+        elif args.train=='false':
+            self.on_train = False
+        else:
+            raise argparse.ArgumentTypeError('arg "train": boolean value expected.')
+        
         self.ep_num = args.ep_num
         self.learning_rate = args.lr
+        self.hidden_layer_number = args.hl
+        self.hidden_neural_number = args.hn
         self.save_num = args.save_num
         self.save_dir_file = args.save_dir_file
         self.restore_dir_file = args.restore_dir_file
@@ -64,21 +74,23 @@ class TrttPort:
         hitted = False
 
         if distance_info[0] <= 0.0776:  # ball was hitted
-            reward += 0
             hitted = True
         else:
-            reward += -10 * distance_info[0] + 0.776
-            hitted = False
+            hitted = False        
+        reward += -10 * distance_info[0]
 
+        
         # Second level of reward, landing position
         target_coordinate = [0.35, -3.13, -0.99]        
         # compute Euclidean distance in x and y coordinate space
         distance_to_target = distance.euclidean(
             landing_info[0:2], target_coordinate[0:2])
+        #print("\ndistance to target: ", distance_to_target)
+        #print("\n")
         if hitted is True and distance_to_target <= 3.0:
-            reward += -0.1 * distance_to_target
+            reward += -1 * distance_to_target
         else:
-            reward += -0.3
+            reward += -3
         
         return reward
 
@@ -86,8 +98,8 @@ class TrttPort:
         pass
 
     def mainLoop(self):
-        self.policyGradient = PolicyGradient(
-            ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=20, learning_rate=self.learning_rate, output_graph=False, restore_dir_file=self.restore_dir_file)
+        self.policyGradient = PolicyGradient(on_train=self.on_train,
+            ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=self.hidden_neural_number, learning_rate=self.learning_rate, output_graph=True, restore_dir_file=self.restore_dir_file)
 
         """
         If Tensorflow-gpu is used, the first action will take quite long time to compute
@@ -114,6 +126,14 @@ class TrttPort:
 
             print("--- Ball observation received!\n")
             self.current_ball_state = ball_obs_json["ball_obs"]
+            print("state", self.current_ball_state)
+
+            ball_velocity_magnitude = np.linalg.norm(self.current_ball_state[3:6])
+            print("mag: ",ball_velocity_magnitude)
+
+            energy = self.current_ball_state[2] * 9.81 * 0.0027 + 0.5*0.0027* pow( ball_velocity_magnitude, 2)
+
+            print("energy: " ,energy) 
 
             print("------------------------------------")
             """
@@ -135,7 +155,7 @@ class TrttPort:
                 "T": self.current_action[0], "delta_t0": self.current_action[1]}
 
             # Try a fixed action
-            #action_json = {"T": 0.343, "delta_t0": 0.835}
+            #action_json = {"T": 0.455, "delta_t0": 0.837}
             self.socket.send_json(action_json)
             print("\n")
             print("--- Action exported!\n")
@@ -197,8 +217,15 @@ if __name__ == "__main__":
     parser.add_argument('--port', default=8181,
                         help="Port of the host to connect to")
 
+    parser.add_argument('--train', default='true' , help="Indicate whether train the policy or not ('true' or 'false')")
+
     parser.add_argument('--lr', default=0.01, type=float,
                         help="Learning rate.")
+
+    parser.add_argument('--hl', default=2, type=int, help="Number of hidden layers in Neural Network.")
+
+    parser.add_argument('--hn', default=20, type=int, help="Number of neueal in each hidden layer")
+
     parser.add_argument('--ep_num', type=int, default=10000,
                         help="Number of total episode to train the policy, e.g. 10000.")
     parser.add_argument('--save_num', type=int, default=0,
