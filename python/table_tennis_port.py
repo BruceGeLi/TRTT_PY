@@ -27,14 +27,15 @@ class TrttPort:
     def __init__(self, args):
         self.host = args.host
         self.port = args.port
-        
-        if args.train=='true':
+
+        if args.train == 'true':
             self.on_train = True
-        elif args.train=='false':
+        elif args.train == 'false':
             self.on_train = False
         else:
-            raise argparse.ArgumentTypeError('arg "train": boolean value expected.')
-        
+            raise argparse.ArgumentTypeError(
+                'arg "train": boolean value expected.')
+
         self.ep_num = args.ep_num
         self.learning_rate = args.lr
         self.hidden_layer_number = args.hl
@@ -70,28 +71,38 @@ class TrttPort:
     def generateReward(self, landing_info, distance_info):
         reward = 0
 
-        # First level of reward represents hitting info
+        """
+            First level of reward represents hitting info
+        """
         hitted = False
+        # theoretical value of boundary distance is 0.0776
+        if distance_info[0] > 0.08:  # ball was not hitted
+            hitted = False
+            reward += 0
 
-        if distance_info[0] <= 0.0776:  # ball was hitted
+        # ball was hitted on the boundary
+        elif 0.06 < distance_info[0] <= 0.08:
             hitted = True
-        else:
-            hitted = False        
-        reward += -10 * distance_info[0]
+            reward += -50 * distance_info[0] + 4
 
-        
-        # Second level of reward, landing position
-        target_coordinate = [0.35, -3.13, -0.99]        
+        else:  # ball is close to the racket center, distance_info[0] <= 0.06
+            hitted = True
+            reward += 1
+
+        """
+            Second level of reward represents landing position
+        """
+        target_coordinate = [0.35, -3.13, -0.99]
         # compute Euclidean distance in x and y coordinate space
         distance_to_target = distance.euclidean(
             landing_info[0:2], target_coordinate[0:2])
         #print("\ndistance to target: ", distance_to_target)
-        #print("\n")
+        # print("\n")
         if hitted is True and distance_to_target <= 3.0:
-            reward += -1 * distance_to_target
+            reward += -1 * distance_to_target + 3
         else:
-            reward += -3
-        
+            reward += 0
+
         return reward
 
     def recordTrainingData(self):
@@ -99,7 +110,7 @@ class TrttPort:
 
     def mainLoop(self):
         self.policyGradient = PolicyGradient(on_train=self.on_train,
-            ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=self.hidden_neural_number, learning_rate=self.learning_rate, output_graph=True, restore_dir_file=self.restore_dir_file)
+                                             ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=self.hidden_neural_number, learning_rate=self.learning_rate, output_graph=True, restore_dir_file=self.restore_dir_file)
 
         """
         If Tensorflow-gpu is used, the first action will take quite long time to compute
@@ -123,17 +134,18 @@ class TrttPort:
             """
             print("\n--- Waiting for ball observation...")
             ball_obs_json = self.socket.recv_json()
-
+            
             print("--- Ball observation received!\n")
             self.current_ball_state = ball_obs_json["ball_obs"]
-            print("state", self.current_ball_state)
 
-            ball_velocity_magnitude = np.linalg.norm(self.current_ball_state[3:6])
-            print("mag: ",ball_velocity_magnitude)
+            ball_velocity_magnitude = np.linalg.norm(
+                self.current_ball_state[3:6])
+            #print("mag: ", ball_velocity_magnitude)
 
-            energy = self.current_ball_state[2] * 9.81 * 0.0027 + 0.5*0.0027* pow( ball_velocity_magnitude, 2)
+            energy = self.current_ball_state[2] * 9.81 * \
+                0.0027 + 0.5*0.0027 * pow(ball_velocity_magnitude, 2)
 
-            print("energy: " ,energy) 
+            #print("energy: ", energy)
 
             print("------------------------------------")
             """
@@ -202,7 +214,7 @@ class TrttPort:
             policy_updated_json = {"policy_ready": True}
             self.socket.send_json(policy_updated_json)
             print("--- Policy updated!")
-
+        self.policyGradient.print_loss()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -217,14 +229,17 @@ if __name__ == "__main__":
     parser.add_argument('--port', default=8181,
                         help="Port of the host to connect to")
 
-    parser.add_argument('--train', default='true' , help="Indicate whether train the policy or not ('true' or 'false')")
+    parser.add_argument('--train', default='true',
+                        help="Indicate whether train the policy or not ('true' or 'false')")
 
-    parser.add_argument('--lr', default=0.01, type=float,
+    parser.add_argument('--lr', default=0.0001, type=float,
                         help="Learning rate.")
 
-    parser.add_argument('--hl', default=2, type=int, help="Number of hidden layers in Neural Network.")
+    parser.add_argument('--hl', default=2, type=int,
+                        help="Number of hidden layers in Neural Network.")
 
-    parser.add_argument('--hn', default=20, type=int, help="Number of neueal in each hidden layer")
+    parser.add_argument('--hn', default=20, type=int,
+                        help="Number of neueal in each hidden layer")
 
     parser.add_argument('--ep_num', type=int, default=10000,
                         help="Number of total episode to train the policy, e.g. 10000.")

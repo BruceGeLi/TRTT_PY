@@ -12,6 +12,9 @@ import numpy as np
 import time
 from datetime import datetime
 import pathlib
+import matplotlib.pyplot as plt
+import math
+
 
 # set random seed
 np.random.seed(int(time.time()))
@@ -40,7 +43,7 @@ class PolicyGradient:
 
         self.build_net()
         self.sess = tf.Session()
-
+        self.loss_list = list()
         if output_graph is True:
             tf.summary.FileWriter("/tmp/graph", self.sess.graph)
 
@@ -89,6 +92,7 @@ class PolicyGradient:
                 name="Hidden_layer1"
             )
 
+            
             self.hidden_layer2 = tf.layers.dense(
                 inputs=self.hidden_layer1,
                 units=self.hidden_layer_dimension,
@@ -142,17 +146,17 @@ class PolicyGradient:
         T_mean_weight = tf.fill([1, 1], 0.2)
         T_mean_bias = tf.fill([1], 0.3)
 
-        # bound T dev from 0.01 to 0.02
-        T_dev_weight = tf.fill([1, 1], 0.01)
-        T_dev_bias = tf.fill([1], 0.01)
+        # bound T dev from 0.00 to 0.02
+        T_dev_weight = tf.fill([1, 1], 0.02)
+        T_dev_bias = tf.fill([1], 0.00)
 
         # bound delta_t0 mean from 0.8 to 0.9
         delta_t0_mean_weight = tf.fill([1, 1], 0.1)
         delta_t0_mean_bias = tf.fill([1], 0.8)
 
-        # bound delta_t0 dev from 0.005 to 0.01
-        delta_t0_dev_weight = tf.fill([1, 1], 0.005)
-        delta_t0_dev_bias = tf.fill([1], 0.005)
+        # bound delta_t0 dev from 0.00 to 0.01
+        delta_t0_dev_weight = tf.fill([1, 1], 0.01)
+        delta_t0_dev_bias = tf.fill([1], 0.00)
 
         self.T_mean = tf.nn.xw_plus_b(
             x=self.T_mean_raw, weights=T_mean_weight, biases=T_mean_bias)
@@ -218,8 +222,8 @@ class PolicyGradient:
                 self.action: [self.current_action],
                 self.reward: [[self.current_reward]]
             })
-            print("log prob:", log_prob, "  loss:", loss)
-
+            print("\nloss:", loss)
+            self.loss_list.append(loss)
             if save is True:
                 now = datetime.now()
 
@@ -230,18 +234,18 @@ class PolicyGradient:
 
                 save_path = self.saver.save(self.sess, save_file_suffix)
                 print("Tensorflow saved parameters into: ", save_path)
-        
+
         else:
             print("NN is not learning! Deterministic policy is used. ")
 
         T_mean = self.sess.run(self.T_mean, feed_dict={
-                    self.ball_state: [self.current_ball_state]})
+            self.ball_state: [self.current_ball_state]})
         T_dev = self.sess.run(self.T_dev, feed_dict={
-                            self.ball_state: [self.current_ball_state]})
+            self.ball_state: [self.current_ball_state]})
         delta_t0_mean = self.sess.run(self.delta_t0_mean, feed_dict={
-                                    self.ball_state: [self.current_ball_state]})
+            self.ball_state: [self.current_ball_state]})
         delta_t0_dev = self.sess.run(self.delta_t0_dev, feed_dict={
-                                    self.ball_state: [self.current_ball_state]})
+            self.ball_state: [self.current_ball_state]})
 
         T_mean = np.reshape(T_mean, [-1])
         T_dev = np.reshape(T_dev, [-1])
@@ -256,3 +260,24 @@ class PolicyGradient:
         self.current_state = None
         self.current_action = None
         self.current_reward = None
+
+    def print_loss(self):
+        compress_list = list()
+        episodes_list = list()
+        list_length = len(self.loss_list)
+        compress_rate = math.ceil(list_length / 20)
+        for counter in range(0, list_length, compress_rate):
+            if counter + compress_rate < list_length:
+                compress_list.append(sum(self.loss_list[counter: counter + compress_rate])/compress_rate)
+                episodes_list.append(counter + math.floor(compress_rate / 2.0))
+            else: 
+                compress_list.append(sum(self.loss_list[counter:])/len(self.loss_list[counter:]))
+                episodes_list.append(counter + math.floor(len(self.loss_list[counter:])/2.0))
+
+        #print("raw loss", self.loss_list)
+        #print("after compress:", compress_list)
+        plt.plot(episodes_list, compress_list)
+        plt.title("loss function")        
+        plt.xlabel("episodes")
+        plt.ylabel("loss")
+        plt.show()
