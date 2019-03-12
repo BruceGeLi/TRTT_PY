@@ -14,6 +14,7 @@ from datetime import datetime
 import pathlib
 import matplotlib.pyplot as plt
 import math
+import json
 
 
 # set random seed
@@ -92,7 +93,6 @@ class PolicyGradient:
                 name="Hidden_layer1"
             )
 
-            
             self.hidden_layer2 = tf.layers.dense(
                 inputs=self.hidden_layer1,
                 units=self.hidden_layer_dimension,
@@ -223,7 +223,7 @@ class PolicyGradient:
                 self.reward: [[self.current_reward]]
             })
             print("\nloss:", loss)
-            self.loss_list.append(loss)
+            self.loss_list.append(loss.item())
             if save is True:
                 now = datetime.now()
 
@@ -261,23 +261,33 @@ class PolicyGradient:
         self.current_action = None
         self.current_reward = None
 
-    def print_loss(self):
+    def print_loss(self, loss_dir_file=None):
         compress_list = list()
         episodes_list = list()
         list_length = len(self.loss_list)
         compress_rate = math.ceil(list_length / 20)
         for counter in range(0, list_length, compress_rate):
             if counter + compress_rate < list_length:
-                compress_list.append(sum(self.loss_list[counter: counter + compress_rate])/compress_rate)
+                compress_list.append(
+                    sum(self.loss_list[counter: counter + compress_rate])/compress_rate)
                 episodes_list.append(counter + math.floor(compress_rate / 2.0))
-            else: 
-                compress_list.append(sum(self.loss_list[counter:])/len(self.loss_list[counter:]))
-                episodes_list.append(counter + math.floor(len(self.loss_list[counter:])/2.0))
+            else:
+                compress_list.append(
+                    sum(self.loss_list[counter:])/len(self.loss_list[counter:]))
+                episodes_list.append(
+                    counter + math.floor(len(self.loss_list[counter:])/2.0))
 
         #print("raw loss", self.loss_list)
         #print("after compress:", compress_list)
         plt.plot(episodes_list, compress_list)
-        plt.title("loss function")        
+        plt.title("loss function")
         plt.xlabel("episodes")
         plt.ylabel("loss")
+        
+        if loss_dir_file is not None:
+            path = pathlib.Path(loss_dir_file)
+            save_file_suffix = str(path.resolve().parent) + str(path.resolve().anchor) + str(path.stem) + ".json"
+            with open(save_file_suffix, 'w') as outfile:
+                json.dump(self.loss_list, outfile)
+        
         plt.show()

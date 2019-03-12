@@ -43,8 +43,8 @@ class TrttPort:
         self.save_num = args.save_num
         self.save_dir_file = args.save_dir_file
         self.restore_dir_file = args.restore_dir_file
-
-        self.policyGradient = None
+        self.loss_dir_file = args.loss_dir_file
+        self.policyGradient = None  
         self.save_iterator = 0
         self.current_ball_state = None
         self.current_action = None
@@ -214,7 +214,7 @@ class TrttPort:
             policy_updated_json = {"policy_ready": True}
             self.socket.send_json(policy_updated_json)
             print("--- Policy updated!")
-        self.policyGradient.print_loss()
+        self.policyGradient.print_loss(self.loss_dir_file)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -250,6 +250,10 @@ if __name__ == "__main__":
 
     parser.add_argument('--restore_dir_file', default=None,
                         help="Dir and file name where the parameters shall be load, e.g. /tmp/parameters")
+
+    parser.add_argument('--loss_dir_file', default=None,
+                        help="Dir and file name where the loss data shall be stored, e.g. /tmp/loss")
+
     args = parser.parse_args()
 
     pg = TrttPort(args)
