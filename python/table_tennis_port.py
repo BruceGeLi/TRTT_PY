@@ -110,7 +110,7 @@ class TrttPort:
 
     def mainLoop(self):
         self.policyGradient = PolicyGradient(on_train=self.on_train,
-                                             ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=self.hidden_neural_number, learning_rate=self.learning_rate, output_graph=True, restore_dir_file=self.restore_dir_file)
+                                             ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=self.hidden_neural_number, learning_rate=self.learning_rate, output_graph=False, restore_dir_file=self.restore_dir_file)
 
         """
         If Tensorflow-gpu is used, the first action will take quite long time to compute

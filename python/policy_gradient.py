@@ -23,7 +23,7 @@ tf.set_random_seed(int(time.time()))
 
 
 class PolicyGradient:
-    def __init__(self, on_train=True, ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=20, learning_rate=0.01, output_graph=False, restore_dir_file=None):
+    def __init__(self, on_train=True, ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=20, learning_rate=0.01, output_graph=False, restore_dir_file=None, queue_length = 10):
 
         # dimension of ball trajectory parameters, 6
         self.input_dimension = ball_state_dimension
@@ -38,9 +38,10 @@ class PolicyGradient:
         self.restore_dir_file = restore_dir_file
         self.on_train = on_train
 
-        self.current_state = list()
-        self.current_action = list()
-        self.current_reward = None
+        # Define queues for learning with multiple samplings to reduce variance
+        self.ball_state_queue = list()
+        self.action_queue = list()
+        self.reward_queue = list()
 
         self.build_net()
         self.sess = tf.Session()
@@ -185,7 +186,7 @@ class PolicyGradient:
         with tf.name_scope("Loss"):
             # log_prob is 2 dim vector
             self.log_prob = [self.T_dist.log_prob(
-                [self.action[0][0]]), self.delta_t0_dist.log_prob([self.action[0][1]])]
+                tf.split(self.action, [1], 1)), self.delta_t0_dist.log_prob(self.action[0][1])]
 
             #print("log prob shape:", tf.shape(self.log_prob))
 
@@ -210,18 +211,19 @@ class PolicyGradient:
             return action
 
     def store_transition(self, state, action, reward):
-        self.current_ball_state = state
-        self.current_action = action
-        self.current_reward = reward
+        self.ball_state_queue = state
+        self.action_queue = action
+        self.reward_queue = reward
 
     def learn(self, save=False, save_dir_file="/tmp/RL_NN_parameters"):
         # todo: normalize reward function
         if self.on_train is True:
             [_, log_prob, loss] = self.sess.run([self.train_optimizer, self.log_prob, self.loss], feed_dict={
-                self.ball_state: [self.current_ball_state],
-                self.action: [self.current_action],
-                self.reward: [[self.current_reward]]
+                self.ball_state: [self.ball_state_queue],
+                self.action: [self.action_queue],
+                self.reward: [[self.reward_queue]]
             })
+            print("log_prob", log_prob)
             print("\nloss:", loss)
             self.loss_list.append(loss.item())
             if save is True:
@@ -239,13 +241,13 @@ class PolicyGradient:
             print("NN is not learning! Deterministic policy is used. ")
 
         T_mean = self.sess.run(self.T_mean, feed_dict={
-            self.ball_state: [self.current_ball_state]})
+            self.ball_state: [self.ball_state_queue]})
         T_dev = self.sess.run(self.T_dev, feed_dict={
-            self.ball_state: [self.current_ball_state]})
+            self.ball_state: [self.ball_state_queue]})
         delta_t0_mean = self.sess.run(self.delta_t0_mean, feed_dict={
-            self.ball_state: [self.current_ball_state]})
+            self.ball_state: [self.ball_state_queue]})
         delta_t0_dev = self.sess.run(self.delta_t0_dev, feed_dict={
-            self.ball_state: [self.current_ball_state]})
+            self.ball_state: [self.ball_state_queue]})
 
         T_mean = np.reshape(T_mean, [-1])
         T_dev = np.reshape(T_dev, [-1])
@@ -258,8 +260,8 @@ class PolicyGradient:
         print(" delta_t0_dev: {:.3f}\n".format(delta_t0_dev[0]))
 
         self.current_state = None
-        self.current_action = None
-        self.current_reward = None
+        self.action_queue = None
+        self.reward_queue = None
 
     def print_loss(self, loss_dir_file=None):
         compress_list = list()
