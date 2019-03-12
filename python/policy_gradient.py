@@ -23,13 +23,10 @@ tf.set_random_seed(int(time.time()))
 
 
 class PolicyGradient:
-    def __init__(self, on_train=True, ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=20, learning_rate=0.01, output_graph=False, restore_dir_file=None, queue_length = 10):
+    def __init__(self, on_train=True, ball_state_dimension=6, hidden_layer_dimension=20, learning_rate=0.0001, output_graph=False, restore_dir_file=None, queue_length=10):
 
         # dimension of ball trajectory parameters, 6
         self.input_dimension = ball_state_dimension
-
-        # dimension of robot action parameters,2
-        self.output_dimension = action_dimension
 
         self.hidden_layer_dimension = hidden_layer_dimension
 
@@ -40,12 +37,14 @@ class PolicyGradient:
 
         # Define queues for learning with multiple samplings to reduce variance
         self.ball_state_queue = list()
-        self.action_queue = list()
+        self.T_queue = list()
+        self.delta_t0_queue = list()
         self.reward_queue = list()
 
         self.build_net()
         self.sess = tf.Session()
         self.loss_list = list()
+
         if output_graph is True:
             tf.summary.FileWriter("/tmp/graph", self.sess.graph)
 
@@ -74,8 +73,10 @@ class PolicyGradient:
             # NN's outputs are mean and variance of action's normal distribution
             # With these distribution in hand, we can generate action
             # These action are used here to compute loss function
-            self.action = tf.placeholder(
-                tf.float32, [None, self.output_dimension], name="action")
+            self.T = tf.placeholder(
+                tf.float32, [None, 1], name="action_T")
+            self.delta_t0 = tf.placeholder(
+                tf.float32, [None, 1], name="action_delta_t0")
 
             # Reward to do Policy Gradient
             # Together with loss function, do back propagation of NN
@@ -178,7 +179,8 @@ class PolicyGradient:
             loc=self.delta_t0_mean, scale=self.delta_t0_dev)
 
         # Sample an action from distribution
-        self.sample = [self.T_dist.sample(), self.delta_t0_dist.sample()]
+        self.sample_T = self.T_dist.sample()
+        self.sample_delta_t0 = self.delta_t0_dist.sample()
         #print("sample shape: ", tf.shape(self.sample))
 
         # Define logarithm of of these two probability distributions
@@ -186,7 +188,7 @@ class PolicyGradient:
         with tf.name_scope("Loss"):
             # log_prob is 2 dim vector
             self.log_prob = [self.T_dist.log_prob(
-                tf.split(self.action, [1], 1)), self.delta_t0_dist.log_prob(self.action[0][1])]
+                self.T), self.delta_t0_dist.log_prob(self.delta_t0)]
 
             #print("log prob shape:", tf.shape(self.log_prob))
 
@@ -200,27 +202,30 @@ class PolicyGradient:
 
     def generate_action(self, ball_state):
         if self.on_train is True:
-            action = self.sess.run(self.sample, feed_dict={
+            T = self.sess.run(self.sample_T, feed_dict={
                 self.ball_state: [ball_state]})
-            action = np.reshape(action, [-1])
+            delta_t0 = self.sess.run(self.sample_delta_t0, feed_dict={
+                self.ball_state: [ball_state]})
+            action = np.reshape([T, delta_t0], [-1])
             return action
         else:
-            action = [self.sess.run(self.T_mean, feed_dict={self.ball_state: [ball_state]}), self.sess.run(
-                self.delta_t0_mean, feed_dict={self.ball_state: [ball_state]})]
-            action = np.reshape(action, [-1])
+            T = self.sess.run(self.T_mean, feed_dict={
+                self.ball_state: [ball_state]})
+            delta_t0 = self.sess.run(self.delta_t0_mean, feed_dict={
+                self.ball_state: [ball_state]})
+            action = np.reshape([T, delta_t0], [-1])
             return action
 
     def store_transition(self, state, action, reward):
-        self.ball_state_queue = state
-        self.action_queue = action
-        self.reward_queue = reward
+        if len(self.action_queue)
 
     def learn(self, save=False, save_dir_file="/tmp/RL_NN_parameters"):
         # todo: normalize reward function
         if self.on_train is True:
             [_, log_prob, loss] = self.sess.run([self.train_optimizer, self.log_prob, self.loss], feed_dict={
                 self.ball_state: [self.ball_state_queue],
-                self.action: [self.action_queue],
+                self.T: [self.T_queue],
+                self.delta_t0: 
                 self.reward: [[self.reward_queue]]
             })
             print("log_prob", log_prob)
@@ -285,11 +290,12 @@ class PolicyGradient:
         plt.title("loss function")
         plt.xlabel("episodes")
         plt.ylabel("loss")
-        
+
         if loss_dir_file is not None:
             path = pathlib.Path(loss_dir_file)
-            save_file_suffix = str(path.resolve().parent) + str(path.resolve().anchor) + str(path.stem) + ".json"
+            save_file_suffix = str(
+                path.resolve().parent) + str(path.resolve().anchor) + str(path.stem) + ".json"
             with open(save_file_suffix, 'w') as outfile:
                 json.dump(self.loss_list, outfile)
-        
+
         plt.show()
