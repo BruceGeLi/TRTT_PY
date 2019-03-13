@@ -110,7 +110,8 @@ class TrttPort:
 
     def mainLoop(self):
         self.policyGradient = PolicyGradient(on_train=self.on_train,
-                                             ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=self.hidden_neural_number, learning_rate=self.learning_rate, output_graph=False, restore_dir_file=self.restore_dir_file)
+                                             ball_state_dimension=6, hidden_layer_dimension=self.hidden_neural_number, learning_rate=self.learning_rate, output_graph=False, restore_dir_file=self.restore_dir_file, 
+                                             queue_length=10)
 
         """
         If Tensorflow-gpu is used, the first action will take quite long time to compute
@@ -190,7 +191,7 @@ class TrttPort:
             self.current_reward = self.generateReward(
                 self.current_landing_info, self.current_ball_racket_dist_info)
             print("====>      Reward: {:.3f}\n".format(self.current_reward))
-            self.policyGradient.store_transition(
+            self.policyGradient.store_episode(
                 self.current_ball_state, self.current_action, self.current_reward)
             print("------------------------------------")
             """
