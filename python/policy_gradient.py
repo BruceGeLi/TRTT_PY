@@ -228,35 +228,32 @@ class PolicyGradient:
         self.delta_t0_queue.append([action[1]])
         self.reward_queue.append([reward])
 
-        # if queue is full, pop the oldest episode
-        if len(self.ball_state_queue) == self.queue_length + 1:
-            self.ball_state_queue.pop(0)
-            self.T_queue.pop(0)
-            self.delta_t0_queue.pop(0)
-            self.reward_queue.pop(0)
-
     def learn(self, save=False, save_dir_file="/tmp/RL_NN_parameters"):
         # todo: normalize reward function
         if self.on_train is True:
-            [_, T_log_prob, delta_t0_log_prob, loss] = self.sess.run([self.train_optimizer, self.T_log_prob, self.delta_t0_log_prob, self.loss], feed_dict={
-                self.ball_state: self.ball_state_queue,
-                self.T: self.T_queue,
-                self.delta_t0: self.delta_t0_queue,
-                self.reward: self.reward_queue
-            })
-            print("\nT_log_prob", T_log_prob)
-            print("\nloss:", loss)
-            self.loss_list.append(loss.item())
-            if save is True:
-                now = datetime.now()
+            if len(self.ball_state_queue) is self.queue_length:
+                [_, T_log_prob, delta_t0_log_prob, loss] = self.sess.run([self.train_optimizer, self.T_log_prob, self.delta_t0_log_prob, self.loss], feed_dict={
+                    self.ball_state: self.ball_state_queue,
+                    self.T: self.T_queue,
+                    self.delta_t0: self.delta_t0_queue,
+                    self.reward: self.reward_queue
+                })
+                print("\nT_log_prob", T_log_prob)
+                print()
+                print("\nloss:", loss)
+                self.loss_list.append(loss.item())
+                if save is True:
+                    now = datetime.now()
 
-                path = pathlib.Path(save_dir_file)
+                    path = pathlib.Path(save_dir_file)
 
-                save_file_suffix = str(path.resolve().parent) + str(path.resolve().anchor) + str(path.stem) + "_" + "{:04d}".format(now.year) + "{:02d}".format(
-                    now.month) + "{:02d}".format(now.day) + "_" + "{:02d}".format(now.hour) + "{:02d}".format(now.minute) + "{:02d}".format(now.second) + ".ckpt"
+                    save_file_suffix = str(path.resolve().parent) + str(path.resolve().anchor) + str(path.stem) + "_" + "{:04d}".format(now.year) + "{:02d}".format(
+                        now.month) + "{:02d}".format(now.day) + "_" + "{:02d}".format(now.hour) + "{:02d}".format(now.minute) + "{:02d}".format(now.second) + ".ckpt"
 
-                save_path = self.saver.save(self.sess, save_file_suffix)
-                print("Tensorflow saved parameters into: ", save_path)
+                    save_path = self.saver.save(self.sess, save_file_suffix)
+                    print("Tensorflow saved parameters into: ", save_path)            
+            else:
+                print("Episode queue is not full, do not update policy")
 
         else:
             print("NN is not learning! Deterministic policy is used. ")
@@ -279,24 +276,30 @@ class PolicyGradient:
         print("        T_dev: {:.3f}".format(T_dev[0]))
         print("delta_t0_mean: {:.3f}".format(delta_t0_mean[0]))
         print(" delta_t0_dev: {:.3f}\n".format(delta_t0_dev[0]))
-
+        
+        if len(self.ball_state_queue) is self.queue_length: 
+            self.ball_state_queue.clear()
+            self.T_queue.clear()
+            self.delta_t0_queue.clear()
+            self.reward_queue.clear()
 
     def print_loss(self, loss_dir_file=None):
         if self.on_train is True:
             compress_list = list()
             episodes_list = list()
             list_length = len(self.loss_list)
-            compress_rate = math.ceil(list_length / 20)
+            point_to_show = 30
+            compress_rate = math.ceil(list_length / point_to_show)
             for counter in range(0, list_length, compress_rate):
                 if counter + compress_rate < list_length:
                     compress_list.append(
                         sum(self.loss_list[counter: counter + compress_rate])/compress_rate)
-                    episodes_list.append(counter + math.floor(compress_rate / 2.0))
+                    episodes_list.append(self.queue_length * counter + math.floor(self.queue_length * compress_rate / 2.0))
                 else:
                     compress_list.append(
                         sum(self.loss_list[counter:])/len(self.loss_list[counter:]))
                     episodes_list.append(
-                        counter + math.floor(len(self.loss_list[counter:])/2.0))
+                        self.queue_length * counter + math.floor(self.queue_length * len(self.loss_list[counter:])/2.0))
 
             #print("raw loss", self.loss_list)
             #print("after compress:", compress_list)
@@ -310,7 +313,7 @@ class PolicyGradient:
                 save_file_suffix = str(
                     path.resolve().parent) + str(path.resolve().anchor) + str(path.stem) + ".json"
                 with open(save_file_suffix, 'w') as outfile:
-                    json.dump(self.loss_list, outfile)
+                    json.dump({"loss_list":self.loss_list, "queue_length": self.queue_length}, outfile)
 
             plt.show()
         else:

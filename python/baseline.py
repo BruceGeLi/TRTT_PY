@@ -9,7 +9,7 @@ import random
 class Baseline:
     def __init__(self):
         self.policy_gradient = PolicyGradient(
-            ball_state_dimension=6, hidden_layer_dimension=20, learning_rate=0.001, queue_length=1)
+            ball_state_dimension=6, hidden_layer_dimension=20, learning_rate=0.0003, queue_length=30)
         self.main_loop()
 
     def get_reward(self, target, current):
@@ -28,7 +28,15 @@ class Baseline:
                         1.4689177274704, 4.52377796173096, 1.27400755882263]
             current_action = self.policy_gradient.generate_action(ball_obs)
 
+
+
+            ##### Target is here!
             target_action=[0.45,0.83]            
+
+
+
+
+
             reward= self.get_reward(target_action, current_action)
             self.policy_gradient.store_episode(ball_obs, current_action, reward)
             self.policy_gradient.learn()
