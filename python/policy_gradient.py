@@ -18,9 +18,10 @@ import json
 
 
 # set random seed
-np.random.seed(int(time.time()))
-tf.set_random_seed(int(time.time()))
-
+#np.random.seed(int(time.time()))
+#tf.set_random_seed(int(time.time()))
+np.random.seed(1)
+tf.set_random_seed(1)
 
 class PolicyGradient:
     def __init__(self, on_train=True, ball_state_dimension=6, hidden_layer_dimension=20, learning_rate=0.0001, output_graph=False, restore_dir_file=None, queue_length=10):
@@ -157,8 +158,8 @@ class PolicyGradient:
             T_dev_weight = tf.fill([1, 1], 0.02)
             T_dev_bias = tf.fill([1], 0.00)
 
-            # bound delta_t0 mean from 0.8 to 0.9
-            delta_t0_mean_weight = tf.fill([1, 1], 0.1)
+            # bound delta_t0 mean from 0.8 to 0.95
+            delta_t0_mean_weight = tf.fill([1, 1], 0.15)
             delta_t0_mean_bias = tf.fill([1], 0.8)
 
             # bound delta_t0 dev from 0.00 to 0.01
@@ -274,10 +275,10 @@ class PolicyGradient:
         delta_t0_mean = np.reshape(delta_t0_mean, [-1])
         delta_t0_dev = np.reshape(delta_t0_dev, [-1])
 
-        print("\n       T_mean: {:.3f}".format(T_mean[0]))
-        print("        T_dev: {:.3f}".format(T_dev[0]))
-        print("delta_t0_mean: {:.3f}".format(delta_t0_mean[0]))
-        print(" delta_t0_dev: {:.3f}\n".format(delta_t0_dev[0]))
+        print("\n       T_mean: {:.4f}".format(T_mean[0]))
+        print("        T_dev: {:.4f}".format(T_dev[0]))
+        print("delta_t0_mean: {:.4f}".format(delta_t0_mean[0]))
+        print(" delta_t0_dev: {:.4f}\n".format(delta_t0_dev[0]))
         
         if len(self.ball_state_queue) is self.queue_length: 
             self.ball_state_queue.clear()

@@ -223,7 +223,7 @@ class TrttPort:
         data_list = list()
         print("start of exhaust sampling")
         for T in np.arange(0.3, 0.50001, 0.005):
-            for delta_t0 in np.arange(0.8, 0.90001, 0.005):
+            for delta_t0 in np.arange(0.8, 1.00001, 0.005):
                 data = dict()
                 print("\n====>           T: ", T,
                       "\n====>    delta_t0: ", delta_t0)
