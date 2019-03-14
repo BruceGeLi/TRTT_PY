@@ -242,7 +242,11 @@ class PolicyGradient:
                 print()
                 print("\nloss:", loss)
                 self.loss_list.append(loss.item())
-                if save is True:
+                         
+            else:
+                print("Episode queue is not full, do not update policy")
+                
+            if save is True:
                     now = datetime.now()
 
                     path = pathlib.Path(save_dir_file)
@@ -251,9 +255,7 @@ class PolicyGradient:
                         now.month) + "{:02d}".format(now.day) + "_" + "{:02d}".format(now.hour) + "{:02d}".format(now.minute) + "{:02d}".format(now.second) + ".ckpt"
 
                     save_path = self.saver.save(self.sess, save_file_suffix)
-                    print("Tensorflow saved parameters into: ", save_path)            
-            else:
-                print("Episode queue is not full, do not update policy")
+                    print("Tensorflow saved parameters into: ", save_path)   
 
         else:
             print("NN is not learning! Deterministic policy is used. ")

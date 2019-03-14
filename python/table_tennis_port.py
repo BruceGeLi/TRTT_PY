@@ -36,6 +36,7 @@ class TrttPort:
             raise argparse.ArgumentTypeError(
                 'arg "train": boolean value expected.')
 
+        self.batch_num = args.batch_num
         self.ep_num = args.ep_num
         self.learning_rate = args.lr
         self.hidden_layer_number = args.hl
@@ -58,6 +59,7 @@ class TrttPort:
 
         self.openSocket()
         self.mainLoop()
+        #self.exhaust_sampling()
         self.closeSocket()
 
     def openSocket(self):
@@ -111,7 +113,7 @@ class TrttPort:
     def mainLoop(self):
         self.policyGradient = PolicyGradient(on_train=self.on_train,
                                              ball_state_dimension=6, hidden_layer_dimension=self.hidden_neural_number, learning_rate=self.learning_rate, output_graph=False, restore_dir_file=self.restore_dir_file, 
-                                             queue_length=10)
+                                             queue_length=self.batch_num)
 
         """
         If Tensorflow-gpu is used, the first action will take quite long time to compute
@@ -217,6 +219,34 @@ class TrttPort:
             print("--- Policy updated!")
         self.policyGradient.print_loss(self.loss_dir_file)
 
+    def exhaust_sampling(self):
+        data_list = list()
+        print("start of exhaust sampling")
+        for T in np.arange(0.3, 0.50001, 0.005):
+            for delta_t0 in np.arange(0.8, 0.90001, 0.005):
+                data = dict()
+                print("\n====>           T: ", T,
+                      "\n====>    delta_t0: ", delta_t0)
+                ball_obs_json = self.socket.recv_json()
+
+                action_json = {"T": T, "delta_t0": delta_t0}           
+                self.socket.send_json(action_json)
+
+                reward_info_json = self.socket.recv_json()
+                current_landing_info = reward_info_json["landing_point"]
+                current_ball_racket_dist_info = reward_info_json["min_distance"]
+
+                policy_updated_json = {"policy_ready": True}
+                self.socket.send_json(policy_updated_json)
+                data["T"] = T
+                data["delta_t0"] = delta_t0
+                data["landing_info"] = current_landing_info
+                data["current_ball_racket_dist_info"] = current_ball_racket_dist_info
+                data_list.append(data)
+        with open("/tmp/data_list.json", 'w') as outfile:
+                    json.dump(data_list, outfile)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -242,8 +272,10 @@ if __name__ == "__main__":
     parser.add_argument('--hn', default=20, type=int,
                         help="Number of neueal in each hidden layer")
 
+    parser.add_argument('--batch_num', type=int, default=10, help="Number of episodes to train the policy once")
+
     parser.add_argument('--ep_num', type=int, default=10000,
-                        help="Number of total episode to train the policy, e.g. 10000.")
+                        help="Number of total episodes to sample, e.g. 10000.")
     parser.add_argument('--save_num', type=int, default=0,
                         help="Save the Neural network parameters for every N episode, e.g. 200")
     parser.add_argument('--save_dir_file', default='/tmp/RL_NN_parameters',
@@ -254,7 +286,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--loss_dir_file', default=None,
                         help="Dir and file name where the loss data shall be stored, e.g. /tmp/loss")
-
+    
     args = parser.parse_args()
 
     pg = TrttPort(args)
