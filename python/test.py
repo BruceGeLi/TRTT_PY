@@ -4,7 +4,7 @@ The most annoying thing is the shape!
 """
 
 import tensorflow as tf
-
+import numpy as np
 tfd = tf.distributions
 
 # Define a batch of two scalar valued Normals.
@@ -36,3 +36,8 @@ sess = tf.Session()
 
 result = sess.run(loss)
 print(result)
+
+n1 = np.array([1.,2.])
+n2 = np.array([3.,4.])
+n3 = n1 / n2
+print(n3 )
