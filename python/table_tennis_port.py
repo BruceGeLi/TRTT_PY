@@ -37,6 +37,7 @@ class TrttPort:
                 'arg "train": boolean value expected.')
 
         self.batch_num = args.batch_num
+        self.reuse_num = args.reuse_num
         self.ep_num = args.ep_num
         self.learning_rate = args.lr
         self.hidden_layer_number = args.hl
@@ -273,6 +274,8 @@ if __name__ == "__main__":
                         help="Number of neueal in each hidden layer")
 
     parser.add_argument('--batch_num', type=int, default=10, help="Number of episodes to train the policy once")
+    
+    parser.add_argument('--reuse_num', type=int, default=5, help="Number of old batches to be reused in learning")
 
     parser.add_argument('--ep_num', type=int, default=10000,
                         help="Number of total episodes to sample, e.g. 10000.")

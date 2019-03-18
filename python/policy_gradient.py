@@ -24,7 +24,7 @@ np.random.seed(1)
 tf.set_random_seed(1)
 
 class PolicyGradient:
-    def __init__(self, on_train=True, ball_state_dimension=6, hidden_layer_dimension=20, learning_rate=0.0001, output_graph=False, restore_dir_file=None, queue_length=10):
+    def __init__(self, on_train=True, ball_state_dimension=6, hidden_layer_dimension=20, learning_rate=0.0001, output_graph=False, restore_dir_file=None, batch_num=10, reuse_num=5):
 
         # dimension of ball trajectory parameters, 6
         self.input_dimension = ball_state_dimension
@@ -36,14 +36,32 @@ class PolicyGradient:
         self.restore_dir_file = restore_dir_file
         self.on_train = on_train
 
-        # Queue length indicates how many number of samples are used to train the policy each time
+        # Batch num indicates how many number of samples are used to train the policy each time
         # This can help reduce the variance of the reward function
-        self.queue_length = queue_length
+        self.batch_num = batch_num
 
-        # Define queues for learning with multiple samplings to reduce variance
+        # How many batches are reused.
+        self.reuse_num = reuse_num
+
+        # Define batches for learning with multiple samplings to reduce variance
+        self.ball_state_batch = list()
+        self.T_batch = list()
+        self.delta_t0_batch = list()
+        self.reward_batch = list()
+
+        """
+            Define queues to store old batch for importance sampling
+                1. ball state to get new policy
+                2. action to get new probability 
+                3. action prob to compute weight
+                4. reward to compute expection
+
+        """
         self.ball_state_queue = list()
         self.T_queue = list()
         self.delta_t0_queue = list()
+        self.T_prob_queue = list()
+        self.delta_t0_prob_queue = list()
         self.reward_queue = list()
 
         self.build_net()
@@ -154,17 +172,17 @@ class PolicyGradient:
             T_mean_weight = tf.fill([1, 1], 0.2)
             T_mean_bias = tf.fill([1], 0.3)
 
-            # bound T dev from 0.00 to 0.02
-            T_dev_weight = tf.fill([1, 1], 0.02)
-            T_dev_bias = tf.fill([1], 0.00)
+            # bound T dev from 0.000 to 0.006
+            T_dev_weight = tf.fill([1, 1], 0.010)
+            T_dev_bias = tf.fill([1], 0.000)
 
             # bound delta_t0 mean from 0.8 to 0.95
             delta_t0_mean_weight = tf.fill([1, 1], 0.15)
             delta_t0_mean_bias = tf.fill([1], 0.8)
 
-            # bound delta_t0 dev from 0.00 to 0.01
-            delta_t0_dev_weight = tf.fill([1, 1], 0.01)
-            delta_t0_dev_bias = tf.fill([1], 0.00)
+            # bound delta_t0 dev from 0.00 to 0.003
+            delta_t0_dev_weight = tf.fill([1, 1], 0.005)
+            delta_t0_dev_bias = tf.fill([1], 0.000)
 
             self.T_mean = tf.nn.xw_plus_b(
                 x=self.T_mean_raw, weights=T_mean_weight, biases=T_mean_bias)
@@ -192,6 +210,11 @@ class PolicyGradient:
         # Define logarithm of of these two probability distributions
         # Consume action which are executed by the robot as input
         with tf.name_scope("Loss"):
+            # log_prob is 2 dim vector
+            self.T_prob = self.T_dist.prob(tf.reshape(self.T, [-1]))
+            self.delta_t0_prob = self.delta_t0_dist.prob(
+                tf.reshape(self.delta_t0, [-1]))
+
             # log_prob is 2 dim vector
             self.T_log_prob = self.T_dist.log_prob(tf.reshape(self.T, [-1]))
             self.delta_t0_log_prob = self.delta_t0_dist.log_prob(
@@ -223,21 +246,21 @@ class PolicyGradient:
             return action
 
     def store_episode(self, state, action, reward):
-        # Append new episode to queue
-        self.ball_state_queue.append(state)
-        self.T_queue.append([action[0]])
-        self.delta_t0_queue.append([action[1]])
-        self.reward_queue.append([reward])
+        # Append new episode to batch
+        self.ball_state_batch.append(state)
+        self.T_batch.append([action[0]])
+        self.delta_t0_batch.append([action[1]])
+        self.reward_batch.append([reward])
 
     def learn(self, save=False, save_dir_file="/tmp/RL_NN_parameters"):
         # todo: normalize reward function
         if self.on_train is True:
-            if len(self.ball_state_queue) is self.queue_length:
+            if len(self.ball_state_batch) is self.batch_num:
                 [_, T_log_prob, delta_t0_log_prob, loss] = self.sess.run([self.train_optimizer, self.T_log_prob, self.delta_t0_log_prob, self.loss], feed_dict={
-                    self.ball_state: self.ball_state_queue,
-                    self.T: self.T_queue,
-                    self.delta_t0: self.delta_t0_queue,
-                    self.reward: self.reward_queue
+                    self.ball_state: self.ball_state_batch,
+                    self.T: self.T_batch,
+                    self.delta_t0: self.delta_t0_batch,
+                    self.reward: self.reward_batch
                 })
                 print("\nT_log_prob", T_log_prob)
                 print()
@@ -245,7 +268,7 @@ class PolicyGradient:
                 self.loss_list.append(loss.item())
                          
             else:
-                print("Episode queue is not full, do not update policy")
+                print("Episode batch is not full, do not update policy")
                 
             if save is True:
                     now = datetime.now()
@@ -262,13 +285,13 @@ class PolicyGradient:
             print("NN is not learning! Deterministic policy is used. ")
 
         T_mean = self.sess.run(self.T_mean, feed_dict={
-            self.ball_state: [self.ball_state_queue[-1]]})
+            self.ball_state: [self.ball_state_batch[-1]]})
         T_dev = self.sess.run(self.T_dev, feed_dict={
-            self.ball_state: [self.ball_state_queue[-1]]})
+            self.ball_state: [self.ball_state_batch[-1]]})
         delta_t0_mean = self.sess.run(self.delta_t0_mean, feed_dict={
-            self.ball_state: [self.ball_state_queue[-1]]})
+            self.ball_state: [self.ball_state_batch[-1]]})
         delta_t0_dev = self.sess.run(self.delta_t0_dev, feed_dict={
-            self.ball_state: [self.ball_state_queue[-1]]})
+            self.ball_state: [self.ball_state_batch[-1]]})
 
         T_mean = np.reshape(T_mean, [-1])
         T_dev = np.reshape(T_dev, [-1])
@@ -280,11 +303,11 @@ class PolicyGradient:
         print("delta_t0_mean: {:.4f}".format(delta_t0_mean[0]))
         print(" delta_t0_dev: {:.4f}\n".format(delta_t0_dev[0]))
         
-        if len(self.ball_state_queue) is self.queue_length: 
-            self.ball_state_queue.clear()
-            self.T_queue.clear()
-            self.delta_t0_queue.clear()
-            self.reward_queue.clear()
+        if len(self.ball_state_batch) is self.batch_num: 
+            self.ball_state_batch.clear()
+            self.T_batch.clear()
+            self.delta_t0_batch.clear()
+            self.reward_batch.clear()
 
     def print_loss(self, loss_dir_file=None):
         if self.on_train is True:
@@ -297,12 +320,12 @@ class PolicyGradient:
                 if counter + compress_rate < list_length:
                     compress_list.append(
                         sum(self.loss_list[counter: counter + compress_rate])/compress_rate)
-                    episodes_list.append(self.queue_length * counter + math.floor(self.queue_length * compress_rate / 2.0))
+                    episodes_list.append(self.batch_num * counter + math.floor(self.batch_num * compress_rate / 2.0))
                 else:
                     compress_list.append(
                         sum(self.loss_list[counter:])/len(self.loss_list[counter:]))
                     episodes_list.append(
-                        self.queue_length * counter + math.floor(self.queue_length * len(self.loss_list[counter:])/2.0))
+                        self.batch_num * counter + math.floor(self.batch_num * len(self.loss_list[counter:])/2.0))
 
             #print("raw loss", self.loss_list)
             #print("after compress:", compress_list)
@@ -316,7 +339,7 @@ class PolicyGradient:
                 save_file_suffix = str(
                     path.resolve().parent) + str(path.resolve().anchor) + str(path.stem) + ".json"
                 with open(save_file_suffix, 'w') as outfile:
-                    json.dump({"loss_list":self.loss_list, "queue_length": self.queue_length}, outfile)
+                    json.dump({"loss_list":self.loss_list, "batch_num": self.batch_num}, outfile)
 
             plt.show()
         else:

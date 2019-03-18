@@ -9,7 +9,7 @@ import random
 class Baseline:
     def __init__(self):
         self.policy_gradient = PolicyGradient(
-            ball_state_dimension=6, hidden_layer_dimension=20, learning_rate=0.0003, queue_length=1)
+            ball_state_dimension=6, hidden_layer_dimension=20, learning_rate=0.0003, queue_length=20)
         self.main_loop()
 
     def get_reward(self, target, current):
@@ -18,7 +18,7 @@ class Baseline:
             reward = -0.0074 * 1
         else:
             reward = -pow(distance.euclidean(target, current), 2) * 1
-        #reward = -pow(distance.euclidean(target, current), 2) * 1
+        reward = -pow(distance.euclidean(target, current), 2) * 1
         return reward
 
     def main_loop(self):
