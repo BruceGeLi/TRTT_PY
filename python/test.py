@@ -37,7 +37,7 @@ sess = tf.Session()
 result = sess.run(loss)
 print(result)
 
-n1 = np.array([1.,2.])
-n2 = np.array([3.,4.])
-n3 = n1 / n2
+n1 = np.array([[1.],[2.]])
+n2 = np.array([[5.],[4.]])
+n3 = n1 - n2
 print(n3 )

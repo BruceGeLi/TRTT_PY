@@ -9,7 +9,7 @@ import random
 class Baseline:
     def __init__(self):
         self.policy_gradient = PolicyGradient(
-            ball_state_dimension=6, hidden_layer_dimension=20, learning_rate=0.0001, batch_num=50, reuse_num=10)
+            ball_state_dimension=6, hidden_layer_dimension=20, learning_rate=0.0003, batch_num=50, reuse_num=10)
         self.main_loop()
 
     def get_reward(self, target, current):
@@ -22,7 +22,7 @@ class Baseline:
         return reward
 
     def main_loop(self):
-        for episode in range(100000):
+        for episode in range(10000):
             print("\nEpisode:", episode+1)
             ball_obs = [0.294038474559784, -3.09185361862183, -0.347362071275711, -
                         1.4689177274704, 4.52377796173096, 1.27400755882263]
