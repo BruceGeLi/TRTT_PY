@@ -54,15 +54,16 @@ class PolicyGradient:
         """
             Define queues to store batches for importance sampling
                 1. ball state to get new policy
-                2. action to get new probability 
+                2. action to get new probability
                 3. action prob to compute weight
-                4. reward to compute expection
+                4. reward to compute advantage
         """
         self.ball_state_queue = list()
         self.T_queue = list()
         self.delta_t0_queue = list()
         self.T_prob_queue = list()
         self.delta_t0_prob_queue = list()
+        self.advantage_queue = list()
         self.reward_queue = list()
 
         self.build_net()
@@ -102,11 +103,9 @@ class PolicyGradient:
             self.delta_t0 = tf.placeholder(
                 tf.float32, [None, 1], name="delta_t0")
 
-            """
-            # Reward to generate advantage 
+            # Reward to generate advantage
             self.reward = tf.placeholder(
                 tf.float32, [None, 1], name="reward")
-            """
 
             # Advantage to optimize state value function and loss function
             self.advantage = tf.placeholder(
@@ -179,12 +178,13 @@ class PolicyGradient:
                 name="delta_t0_dev_raw"
             )
 
-            # Build output layer for state-value function parameterization
+            # Build output layer for state-value function approximation
             self.state_value = tf.layers.dense(
                 inputs=self.ball_state,
                 units=1,
-                activation=tf.nn.relu,
-                kernel_initializer=tf.random_normal_initializer(mean=0, stddev=0.3),
+                activation=None,
+                kernel_initializer=tf.random_normal_initializer(
+                    mean=0, stddev=0.3),
                 name="state_value_aproximation"
             )
 
@@ -198,7 +198,7 @@ class PolicyGradient:
             T_dev_bias = tf.fill([1], 0.000)
 
             # bound delta_t0 mean from 0.8 to 0.95
-            delta_t0_mean_weight = tf.fill([1, 1], 0.15)
+            delta_t0_mean_weight = tf.fill([1, 1], 0.11)
             delta_t0_mean_bias = tf.fill([1], 0.8)
 
             # bound delta_t0 dev from 0.00 to 0.003
@@ -226,15 +226,8 @@ class PolicyGradient:
             # Sample an action from distribution
             self.T_sample = self.T_dist.sample()
             self.delta_t0_sample = self.delta_t0_dist.sample()
-            #print("sample shape: ", tf.shape(self.sample))
+            # print("sample shape: ", tf.shape(self.sample))
 
-        with tf.name_scope("State_value"):
-            self.error = tf.reduce_mean(-tf.reshape(self.advantage, [-1]) * tf.reshape(self.state_value, [-1]))
-
-
-        # Define logarithm of of these two probability distributions
-        # Consume action which are executed by the robot as input
-        with tf.name_scope("Loss"):
             # prob is 2 dim vector
             self.T_prob = self.T_dist.prob(tf.reshape(self.T, [-1]))
             self.delta_t0_prob = self.delta_t0_dist.prob(
@@ -245,15 +238,22 @@ class PolicyGradient:
             self.delta_t0_log_prob = self.delta_t0_dist.log_prob(
                 tf.reshape(self.delta_t0, [-1]))
 
-            # reduce mean value along vector dimension
+        with tf.name_scope("State_value"):
+            self.error = tf.reduce_mean(-tf.reshape(self.advantage,
+                                                    [-1]) * tf.reshape(self.state_value, [-1]))
+
+        with tf.name_scope("Loss"):
+            self.loss_baseline = tf.reduce_mean([self.T_log_prob,
+                                                 self.delta_t0_log_prob] * tf.reshape(self.IS_weight, [-1]) * -tf.reshape(self.advantage, [-1]))
             self.loss = tf.reduce_mean([self.T_log_prob,
-                                        self.delta_t0_log_prob] * tf.reshape(self.IS_weight, [-1]) * -tf.reshape(self.advantage, [-1]))
+                                        self.delta_t0_log_prob] * tf.reshape(self.IS_weight, [-1]) * -tf.reshape(self.reward, [-1]))
 
         with tf.name_scope("Train"):
             # optimizer
-            self.value_optimizer = tf.train.AdamOptimizer(self.learning_rate).minimize(self.error)
+            self.value_optimizer = tf.train.GradientDescentOptimizer(
+                0.01).minimize(self.error)
             self.action_optimizer = tf.train.AdamOptimizer(
-                self.learning_rate).minimize(self.loss)
+                self.learning_rate).minimize(self.loss_baseline)
 
     def generate_action(self, ball_state):
         if self.on_train is True:
@@ -280,20 +280,28 @@ class PolicyGradient:
 
         # Check if batch is full
         if len(self.ball_state_batch) == self.batch_num:
-            # compute probability of policy
-            [T_prob, delta_t0_prob] = self.sess.run([self.T_prob, self.delta_t0_prob], feed_dict={
-                                                    self.ball_state: self.ball_state_batch,
-                                                    self.T: self.T_batch,
-                                                    self.delta_t0: self.delta_t0_batch})
+            # compute probability of action in current policy
+            [T_prob_batch, delta_t0_prob_batch] = self.sess.run([self.T_prob, self.delta_t0_prob], feed_dict={
+                self.ball_state: self.ball_state_batch,
+                self.T: self.T_batch,
+                self.delta_t0: self.delta_t0_batch})
+
+            """
+            # compute advantage in current policy
+            state_value_batch = self.sess.run(self.state_value, feed_dict={
+                                              self.ball_state: self.ball_state_batch})
+            advantage_batch = self.reward_batch - state_value_batch
+            """
 
             # fill the batch queue
             self.ball_state_queue.append(self.ball_state_batch)
             self.T_queue.append(self.T_batch)
             self.delta_t0_queue.append(self.delta_t0_batch)
             self.reward_queue.append(self.reward_batch)
-            self.T_prob_queue.append(np.expand_dims(T_prob, axis=1))
+            # self.advantage_queue.append(advantage_batch)
+            self.T_prob_queue.append(np.expand_dims(T_prob_batch, axis=1))
             self.delta_t0_prob_queue.append(
-                np.expand_dims(delta_t0_prob, axis=1))
+                np.expand_dims(delta_t0_prob_batch, axis=1))
 
             self.new_batch_queued = True
 
@@ -301,21 +309,23 @@ class PolicyGradient:
             self.ball_state_queue.pop(0)
             self.T_queue.pop(0)
             self.delta_t0_queue.pop(0)
+            self.reward_queue.pop(0)
+            # self.advantage_queue.pop(0)
             self.T_prob_queue.pop(0)
             self.delta_t0_prob_queue.pop(0)
-            self.reward_queue.pop(0)
 
     def learn(self, save=False, save_dir_file="/tmp/RL_NN_parameters"):
         if self.on_train is True:
             if self.new_batch_queued is True:
                 counter = 1
                 # for each batch in queue:
-                for ball_state_batch, T_batch, delta_t0_batch, T_prob_batch, delta_t0_prob_batch, reward_batch in zip(self.ball_state_queue, self.T_queue, self.delta_t0_queue, self.T_prob_queue, self.delta_t0_prob_queue, self.reward_queue):
-                    
-                    # Compute state value approximation 
-                    state_value_batch = self.sess.run(self.state_value, feed_dict={self.ball_state:ball_state_batch})
-                    
-                    # Compute advantage
+                """
+                for ball_state_batch, T_batch, delta_t0_batch, T_prob_batch, delta_t0_prob_batch,advantage_batch,reward_batch in zip(reversed(self.ball_state_queue), reversed(self.T_queue), reversed(self.delta_t0_queue), reversed(self.T_prob_queue), reversed(self.delta_t0_prob_queue), reversed(self.advantage_queue), reversed(self.reward_queue)):
+                """
+                for ball_state_batch, T_batch, delta_t0_batch, T_prob_batch, delta_t0_prob_batch,reward_batch in zip(reversed(self.ball_state_queue), reversed(self.T_queue), reversed(self.delta_t0_queue), reversed(self.T_prob_queue), reversed(self.delta_t0_prob_queue), reversed(self.reward_queue)):
+                    # compute advantage in current policy
+                    state_value_batch = self.sess.run(self.state_value, feed_dict={
+                        self.ball_state: ball_state_batch})
                     advantage_batch = reward_batch - state_value_batch
 
                     # Compute probability of batch actions in new policy
@@ -323,15 +333,18 @@ class PolicyGradient:
                         self.ball_state: ball_state_batch, self.T: T_batch,                                self.delta_t0: delta_t0_batch})
 
                     # Compute weight for importance sampling
-                    IS_weight_batch = np.reshape(T_prob_batch_new, [-1]) * np.reshape(delta_t0_prob_batch_new, [-1]) / (np.reshape(T_prob_batch, [-1]) * np.reshape(delta_t0_prob_batch, [-1]))
+                    IS_weight_batch = np.reshape(T_prob_batch_new, [-1]) * np.reshape(delta_t0_prob_batch_new, [-1]) / (
+                        np.reshape(T_prob_batch, [-1]) * np.reshape(delta_t0_prob_batch, [-1]))
 
                     # Update parameters in NN
-                    [_1, _2, T_log_prob, loss] = self.sess.run([self.value_optimizer, self.action_optimizer, self.T_log_prob, self.loss], feed_dict={
-                        self.ball_state: ball_state_batch, self.T: T_batch, self.delta_t0: delta_t0_batch, self.advantage: advantage_batch, self.IS_weight: np.expand_dims( IS_weight_batch, axis=1)})
+                    [o1, o2, loss] = self.sess.run([self.value_optimizer, self.action_optimizer, self.loss], feed_dict={
+                        self.ball_state: ball_state_batch, self.T: T_batch, self.delta_t0: delta_t0_batch, self.reward: reward_batch, self.advantage: advantage_batch, self.IS_weight: np.expand_dims(IS_weight_batch, axis=1)})
 
                     print("Update batch No.", counter)
                     counter += 1
-                    print("\nT_log_prob", T_log_prob)
+                    print("\nreward: \n", np.reshape(reward_batch, [-1]))
+                    print("\nstate value approximation: \n", np.reshape(state_value_batch, [-1]))
+                    print("\nadvantage: \n", np.reshape(advantage_batch, [-1]))
                     print()
                     print("\nloss:", loss)
 
@@ -400,8 +413,8 @@ class PolicyGradient:
                     episodes_list.append(
                         self.batch_num * counter + math.floor(self.batch_num * len(self.loss_list[counter:])/2.0))
 
-            #print("raw loss", self.loss_list)
-            #print("after compress:", compress_list)
+            # print("raw loss", self.loss_list)
+            # print("after compress:", compress_list)
             plt.plot(episodes_list, compress_list)
             plt.title("loss function")
             plt.xlabel("episodes")
