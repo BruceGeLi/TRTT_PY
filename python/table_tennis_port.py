@@ -114,7 +114,7 @@ class TrttPort:
     def mainLoop(self):
         self.policyGradient = PolicyGradient(on_train=self.on_train,
                                              ball_state_dimension=6, hidden_layer_dimension=self.hidden_neural_number, learning_rate=self.learning_rate, output_graph=False, restore_dir_file=self.restore_dir_file, 
-                                             queue_length=self.batch_num)
+                                             batch_num=self.batch_num, reuse_num=self.reuse_num)
 
         """
         If Tensorflow-gpu is used, the first action will take quite long time to compute
@@ -161,17 +161,17 @@ class TrttPort:
                 self.current_ball_state).tolist()
             print("--- Hitting parameters computed!\n\n")
 
-            print("====>           T: {:.3f}\n====>    delta_t0: {:.3f}".format(
+            print("====>           T: {:.6f}\n====>    delta_t0: {:.6f}".format(
                 self.current_action[0], self.current_action[1]))
 
             #t3 = datetime.datetime.now()
             # print(t3-t2)
             # print("\n\n")
-            action_json = {
+            #action_json = {
                 "T": self.current_action[0], "delta_t0": self.current_action[1]}
 
             # Try a fixed action
-            #action_json = {"T": 0.455, "delta_t0": 0.837}
+            # action_json = {"T": 0.3631, "delta_t0": 0.8743}
             self.socket.send_json(action_json)
             print("\n")
             print("--- Action exported!\n")

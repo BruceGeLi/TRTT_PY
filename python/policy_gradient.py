@@ -44,7 +44,7 @@ class PolicyGradient:
         # How many batches are reused.
         self.reuse_num = reuse_num
 
-        # Define batches for learning with multiple samplings to reduce variance
+        # Define batches for learning with multiple samplings to compute expection
         self.ball_state_batch = list()
         self.T_batch = list()
         self.delta_t0_batch = list()
@@ -53,18 +53,18 @@ class PolicyGradient:
 
         """
             Define queues to store batches for importance sampling
-                1. ball state to get new policy
-                2. action to get new probability
-                3. action prob to compute weight
-                4. reward to compute advantage
+                1. ball state to feed policy to generate action
+                2. action to feed policy generate probability
+                3. action to feed policy prob to compute importance sampling weight
+                4. reward to compute advantage and loss
         """
         self.ball_state_queue = list()
         self.T_queue = list()
         self.delta_t0_queue = list()
+        self.reward_queue = list()
         self.T_prob_queue = list()
         self.delta_t0_prob_queue = list()
         self.advantage_queue = list()
-        self.reward_queue = list()
 
         self.build_net()
         self.sess = tf.Session()
@@ -75,9 +75,9 @@ class PolicyGradient:
 
         self.saver = tf.train.Saver()
 
+        # Initialize NN parameters or restore them from file
         if self.restore_dir_file is None:
             self.sess.run(tf.global_variables_initializer())
-
         else:
             path = pathlib.Path(self.restore_dir_file)
             path_file_suffix = str(path.resolve(
@@ -95,21 +95,15 @@ class PolicyGradient:
             self.ball_state = tf.placeholder(
                 tf.float32, [None, self.input_dimension], name="ball_state")
 
-            # NN's outputs are mean and variance of action's normal distribution
-            # With these distribution in hand, we can generate action
             # These action are used here to compute loss function
             self.T = tf.placeholder(
                 tf.float32, [None, 1], name="T")
             self.delta_t0 = tf.placeholder(
                 tf.float32, [None, 1], name="delta_t0")
 
-            # Reward to generate advantage
-            self.reward = tf.placeholder(
+            # Gain can be reward, advantage
+            self.gain = tf.placeholder(
                 tf.float32, [None, 1], name="reward")
-
-            # Advantage to optimize state value function and loss function
-            self.advantage = tf.placeholder(
-                tf.float32, [None, 1], name='advantage')
 
             # Weight for importance sampling
             self.IS_weight = tf.placeholder(
@@ -193,27 +187,25 @@ class PolicyGradient:
             T_mean_weight = tf.fill([1, 1], 0.2)
             T_mean_bias = tf.fill([1], 0.3)
 
-            # bound T dev from 0.000 to 0.006
+            # bound T dev from 0.000 to 0.010
             T_dev_weight = tf.fill([1, 1], 0.010)
             T_dev_bias = tf.fill([1], 0.000)
 
-            # bound delta_t0 mean from 0.8 to 0.95
+            # bound delta_t0 mean from 0.8 to 0.91
             delta_t0_mean_weight = tf.fill([1, 1], 0.11)
             delta_t0_mean_bias = tf.fill([1], 0.8)
 
-            # bound delta_t0 dev from 0.00 to 0.003
+            # bound delta_t0 dev from 0.00 to 0.005
             delta_t0_dev_weight = tf.fill([1, 1], 0.005)
             delta_t0_dev_bias = tf.fill([1], 0.000)
 
+            # Do linear transform from bound [0,1] to target bound
             self.T_mean = tf.nn.xw_plus_b(
                 x=self.T_mean_raw, weights=T_mean_weight, biases=T_mean_bias)
-
             self.T_dev = tf.nn.xw_plus_b(
                 x=self.T_dev_raw, weights=T_dev_weight, biases=T_dev_bias)
-
             self.delta_t0_mean = tf.nn.xw_plus_b(
                 x=self.delta_t0_mean_raw, weights=delta_t0_mean_weight, biases=delta_t0_mean_bias)
-
             self.delta_t0_dev = tf.nn.xw_plus_b(
                 x=self.delta_t0_dev_raw, weights=delta_t0_dev_weight, biases=delta_t0_dev_bias)
 
@@ -226,34 +218,31 @@ class PolicyGradient:
             # Sample an action from distribution
             self.T_sample = self.T_dist.sample()
             self.delta_t0_sample = self.delta_t0_dist.sample()
-            # print("sample shape: ", tf.shape(self.sample))
 
-            # prob is 2 dim vector
+            # Compute probability density from distribution
             self.T_prob = self.T_dist.prob(tf.reshape(self.T, [-1]))
             self.delta_t0_prob = self.delta_t0_dist.prob(
                 tf.reshape(self.delta_t0, [-1]))
 
-            # log_prob is 2 dim vector
+            # Compute log probability density from distribution
             self.T_log_prob = self.T_dist.log_prob(tf.reshape(self.T, [-1]))
             self.delta_t0_log_prob = self.delta_t0_dist.log_prob(
                 tf.reshape(self.delta_t0, [-1]))
 
-        with tf.name_scope("State_value"):
-            self.error = tf.reduce_mean(-tf.reshape(self.advantage,
+        with tf.name_scope("Error"):
+            self.error = tf.reduce_mean(-tf.reshape(self.gain,
                                                     [-1]) * tf.reshape(self.state_value, [-1]))
 
         with tf.name_scope("Loss"):
-            self.loss_baseline = tf.reduce_mean([self.T_log_prob,
-                                                 self.delta_t0_log_prob] * tf.reshape(self.IS_weight, [-1]) * -tf.reshape(self.advantage, [-1]))
-            self.loss = tf.reduce_mean([self.T_log_prob,
-                                        self.delta_t0_log_prob] * tf.reshape(self.IS_weight, [-1]) * -tf.reshape(self.reward, [-1]))
+            self.loss = tf.reduce_mean(-tf.reshape(self.gain, [-1]) * tf.reshape(
+                self.IS_weight, [-1]) * [self.T_log_prob, self.delta_t0_log_prob])
 
         with tf.name_scope("Train"):
             # optimizer
-            self.value_optimizer = tf.train.GradientDescentOptimizer(
-                0.01).minimize(self.error)
-            self.action_optimizer = tf.train.AdamOptimizer(
-                self.learning_rate).minimize(self.loss_baseline)
+            self.state_value_optimizer = tf.train.GradientDescentOptimizer(
+                0.001).minimize(self.error)
+            self.policy_optimizer = tf.train.AdamOptimizer(
+                self.learning_rate).minimize(self.loss)
 
     def generate_action(self, ball_state):
         if self.on_train is True:
@@ -314,6 +303,12 @@ class PolicyGradient:
             self.T_prob_queue.pop(0)
             self.delta_t0_prob_queue.pop(0)
 
+    def standard_gain(self, gain):
+        std_gain = np.array(gain)
+        std_gain -= np.average(std_gain)
+        std_gain /= np.std(std_gain)
+        return std_gain
+
     def learn(self, save=False, save_dir_file="/tmp/RL_NN_parameters"):
         if self.on_train is True:
             if self.new_batch_queued is True:
@@ -322,12 +317,15 @@ class PolicyGradient:
                 """
                 for ball_state_batch, T_batch, delta_t0_batch, T_prob_batch, delta_t0_prob_batch,advantage_batch,reward_batch in zip(reversed(self.ball_state_queue), reversed(self.T_queue), reversed(self.delta_t0_queue), reversed(self.T_prob_queue), reversed(self.delta_t0_prob_queue), reversed(self.advantage_queue), reversed(self.reward_queue)):
                 """
-                for ball_state_batch, T_batch, delta_t0_batch, T_prob_batch, delta_t0_prob_batch,reward_batch in zip(reversed(self.ball_state_queue), reversed(self.T_queue), reversed(self.delta_t0_queue), reversed(self.T_prob_queue), reversed(self.delta_t0_prob_queue), reversed(self.reward_queue)):
+                for ball_state_batch, T_batch, delta_t0_batch, T_prob_batch, delta_t0_prob_batch, reward_batch in zip(reversed(self.ball_state_queue), reversed(self.T_queue), reversed(self.delta_t0_queue), reversed(self.T_prob_queue), reversed(self.delta_t0_prob_queue), reversed(self.reward_queue)):
                     # compute advantage in current policy
                     state_value_batch = self.sess.run(self.state_value, feed_dict={
                         self.ball_state: ball_state_batch})
                     advantage_batch = reward_batch - state_value_batch
 
+                    # Standardize advantage
+                    std_reward_batch = self.standard_gain(reward_batch)
+                    std_advantage_batch = self.standard_gain(advantage_batch)
                     # Compute probability of batch actions in new policy
                     [T_prob_batch_new, delta_t0_prob_batch_new] = self.sess.run([self.T_prob, self.delta_t0_prob], feed_dict={
                         self.ball_state: ball_state_batch, self.T: T_batch,                                self.delta_t0: delta_t0_batch})
@@ -337,17 +335,28 @@ class PolicyGradient:
                         np.reshape(T_prob_batch, [-1]) * np.reshape(delta_t0_prob_batch, [-1]))
 
                     # Update parameters in NN
-                    [o1, o2, loss] = self.sess.run([self.value_optimizer, self.action_optimizer, self.loss], feed_dict={
-                        self.ball_state: ball_state_batch, self.T: T_batch, self.delta_t0: delta_t0_batch, self.reward: reward_batch, self.advantage: advantage_batch, self.IS_weight: np.expand_dims(IS_weight_batch, axis=1)})
+                    self.sess.run(self.state_value_optimizer, feed_dict={
+                                  self.ball_state: ball_state_batch, self.gain: advantage_batch})
+
+                    self.sess.run(self.policy_optimizer, feed_dict={self.ball_state: ball_state_batch, self.T: T_batch, self.delta_t0: delta_t0_batch,  self.IS_weight: np.expand_dims(
+                        IS_weight_batch, axis=1), self.gain: std_advantage_batch})
+
+                    if counter ==1:
+                        loss = self.sess.run(self.loss, feed_dict={self.ball_state: ball_state_batch, self.T: T_batch, self.delta_t0: delta_t0_batch, self.IS_weight: np.expand_dims(
+                        IS_weight_batch, axis=1), self.gain: reward_batch})                    
+                        print("\nloss:", loss)
 
                     print("Update batch No.", counter)
-                    counter += 1
-                    print("\nreward: \n", np.reshape(reward_batch, [-1]))
-                    print("\nstate value approximation: \n", np.reshape(state_value_batch, [-1]))
+                    counter += 1                    
+                    #print("\nreward: \n", np.reshape(reward_batch, [-1]))
+                    print("\nstate value approximation: \n",
+                          np.reshape(state_value_batch, [-1]))
+                    """
                     print("\nadvantage: \n", np.reshape(advantage_batch, [-1]))
+                    print("\nstd_advantage: \n", np.reshape(std_advantage_batch, [-1]))
                     print()
-                    print("\nloss:", loss)
-
+                    """                    
+                    
                 # Append last loss into loss list
                 self.loss_list.append(loss.item())
                 self.new_batch_queued = False
