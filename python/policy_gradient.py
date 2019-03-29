@@ -305,6 +305,8 @@ class PolicyGradient:
 
     def standard_gain(self, gain):
         std_gain = np.array(gain)
+        print("std_gain: ", std_gain)
+        print("avg std_gain: ", np.average(std_gain))
         std_gain -= np.average(std_gain)
         std_gain /= np.std(std_gain)
         return std_gain
@@ -324,7 +326,7 @@ class PolicyGradient:
                     advantage_batch = reward_batch - state_value_batch
 
                     # Standardize advantage
-                    std_reward_batch = self.standard_gain(reward_batch)
+                    #std_reward_batch = self.standard_gain(reward_batch)
                     std_advantage_batch = self.standard_gain(advantage_batch)
                     # Compute probability of batch actions in new policy
                     [T_prob_batch_new, delta_t0_prob_batch_new] = self.sess.run([self.T_prob, self.delta_t0_prob], feed_dict={

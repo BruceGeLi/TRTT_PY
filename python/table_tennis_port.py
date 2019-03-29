@@ -46,7 +46,7 @@ class TrttPort:
         self.save_dir_file = args.save_dir_file
         self.restore_dir_file = args.restore_dir_file
         self.loss_dir_file = args.loss_dir_file
-        self.policyGradient = None  
+        self.policyGradient = None
         self.save_iterator = 0
         self.current_ball_state = None
         self.current_action = None
@@ -60,7 +60,7 @@ class TrttPort:
 
         self.openSocket()
         self.mainLoop()
-        #self.exhaust_sampling()
+        # self.exhaust_sampling()
         self.closeSocket()
 
     def openSocket(self):
@@ -113,7 +113,7 @@ class TrttPort:
 
     def mainLoop(self):
         self.policyGradient = PolicyGradient(on_train=self.on_train,
-                                             ball_state_dimension=6, hidden_layer_dimension=self.hidden_neural_number, learning_rate=self.learning_rate, output_graph=False, restore_dir_file=self.restore_dir_file, 
+                                             ball_state_dimension=6, hidden_layer_dimension=self.hidden_neural_number, learning_rate=self.learning_rate, output_graph=False, restore_dir_file=self.restore_dir_file,
                                              batch_num=self.batch_num, reuse_num=self.reuse_num)
 
         """
@@ -138,7 +138,7 @@ class TrttPort:
             """
             print("\n--- Waiting for ball observation...")
             ball_obs_json = self.socket.recv_json()
-            
+
             print("--- Ball observation received!\n")
             self.current_ball_state = ball_obs_json["ball_obs"]
 
@@ -167,11 +167,10 @@ class TrttPort:
             #t3 = datetime.datetime.now()
             # print(t3-t2)
             # print("\n\n")
-            #action_json = {
-                "T": self.current_action[0], "delta_t0": self.current_action[1]}
+            action_json = {"T": self.current_action[0], "delta_t0": self.current_action[1]}
 
             # Try a fixed action
-            # action_json = {"T": 0.3631, "delta_t0": 0.8743}
+            action_json = {"T": 0.3631, "delta_t0": 0.88}
             self.socket.send_json(action_json)
             print("\n")
             print("--- Action exported!\n")
@@ -230,7 +229,7 @@ class TrttPort:
                       "\n====>    delta_t0: ", delta_t0)
                 ball_obs_json = self.socket.recv_json()
 
-                action_json = {"T": T, "delta_t0": delta_t0}           
+                action_json = {"T": T, "delta_t0": delta_t0}
                 self.socket.send_json(action_json)
 
                 reward_info_json = self.socket.recv_json()
@@ -245,7 +244,7 @@ class TrttPort:
                 data["current_ball_racket_dist_info"] = current_ball_racket_dist_info
                 data_list.append(data)
         with open("/tmp/data_list.json", 'w') as outfile:
-                    json.dump(data_list, outfile)
+            json.dump(data_list, outfile)
 
 
 if __name__ == "__main__":
@@ -273,9 +272,11 @@ if __name__ == "__main__":
     parser.add_argument('--hn', default=20, type=int,
                         help="Number of neueal in each hidden layer")
 
-    parser.add_argument('--batch_num', type=int, default=10, help="Number of episodes to train the policy once")
-    
-    parser.add_argument('--reuse_num', type=int, default=5, help="Number of old batches to be reused in learning")
+    parser.add_argument('--batch_num', type=int, default=10,
+                        help="Number of episodes to train the policy once")
+
+    parser.add_argument('--reuse_num', type=int, default=5,
+                        help="Number of old batches to be reused in learning")
 
     parser.add_argument('--ep_num', type=int, default=10000,
                         help="Number of total episodes to sample, e.g. 10000.")
@@ -289,7 +290,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--loss_dir_file', default=None,
                         help="Dir and file name where the loss data shall be stored, e.g. /tmp/loss")
-    
+
     args = parser.parse_args()
 
     pg = TrttPort(args)
