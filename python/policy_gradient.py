@@ -7,6 +7,8 @@ Using:
 Tensorflow
 
 """
+import os
+os.environ["CUDA_VISIBLE_DEVICES"]=""
 import tensorflow as tf
 import numpy as np
 import time
@@ -305,8 +307,6 @@ class PolicyGradient:
 
     def standard_gain(self, gain):
         std_gain = np.array(gain)
-        print("std_gain: ", std_gain)
-        print("avg std_gain: ", np.average(std_gain))
         std_gain -= np.average(std_gain)
         std_gain /= np.std(std_gain)
         return std_gain
@@ -326,7 +326,7 @@ class PolicyGradient:
                     advantage_batch = reward_batch - state_value_batch
 
                     # Standardize advantage
-                    #std_reward_batch = self.standard_gain(reward_batch)
+                    std_reward_batch = self.standard_gain(reward_batch)
                     std_advantage_batch = self.standard_gain(advantage_batch)
                     # Compute probability of batch actions in new policy
                     [T_prob_batch_new, delta_t0_prob_batch_new] = self.sess.run([self.T_prob, self.delta_t0_prob], feed_dict={
@@ -343,13 +343,13 @@ class PolicyGradient:
                     self.sess.run(self.policy_optimizer, feed_dict={self.ball_state: ball_state_batch, self.T: T_batch, self.delta_t0: delta_t0_batch,  self.IS_weight: np.expand_dims(
                         IS_weight_batch, axis=1), self.gain: std_advantage_batch})
 
-                    if counter ==1:
+                    if counter == 1:
                         loss = self.sess.run(self.loss, feed_dict={self.ball_state: ball_state_batch, self.T: T_batch, self.delta_t0: delta_t0_batch, self.IS_weight: np.expand_dims(
-                        IS_weight_batch, axis=1), self.gain: reward_batch})                    
+                            IS_weight_batch, axis=1), self.gain: reward_batch})
                         print("\nloss:", loss)
 
                     print("Update batch No.", counter)
-                    counter += 1                    
+                    counter += 1
                     #print("\nreward: \n", np.reshape(reward_batch, [-1]))
                     print("\nstate value approximation: \n",
                           np.reshape(state_value_batch, [-1]))
@@ -357,9 +357,9 @@ class PolicyGradient:
                     print("\nadvantage: \n", np.reshape(advantage_batch, [-1]))
                     print("\nstd_advantage: \n", np.reshape(std_advantage_batch, [-1]))
                     print()
-                    """                    
-                    
-                # Append last loss into loss list
+                    """
+
+                # Append lastest loss into loss list
                 self.loss_list.append(loss.item())
                 self.new_batch_queued = False
 

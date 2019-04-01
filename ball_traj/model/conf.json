@@ -1,1 +1,1 @@
-{"model": "dcgm", "deltaT": 0.01, "samples": 30, "default_Sigma_y": 1.0, "z_size": 64, "length": 120}
+{"model": "dcgm", "deltaT": 0.01, "samples": 30, "default_Sigma_y": 1.0, "z_size": 64, "length": 140}
