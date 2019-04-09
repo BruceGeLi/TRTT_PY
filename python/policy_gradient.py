@@ -185,16 +185,16 @@ class PolicyGradient:
             )
 
         with tf.name_scope("Normal_distribution"):
-            # bound T mean from 0.3 to 0.5
-            T_mean_weight = tf.fill([1, 1], 0.2)
-            T_mean_bias = tf.fill([1], 0.3)
+            # bound T mean from 0.4 to 0.5
+            T_mean_weight = tf.fill([1, 1], 0.1)
+            T_mean_bias = tf.fill([1], 0.4)
 
             # bound T dev from 0.000 to 0.010
             T_dev_weight = tf.fill([1, 1], 0.010)
             T_dev_bias = tf.fill([1], 0.000)
 
-            # bound delta_t0 mean from 0.8 to 0.91
-            delta_t0_mean_weight = tf.fill([1, 1], 0.11)
+            # bound delta_t0 mean from 0.8 to 0.90
+            delta_t0_mean_weight = tf.fill([1, 1], 0.10)
             delta_t0_mean_bias = tf.fill([1], 0.8)
 
             # bound delta_t0 dev from 0.00 to 0.005

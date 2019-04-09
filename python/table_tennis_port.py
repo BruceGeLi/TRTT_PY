@@ -59,7 +59,8 @@ class TrttPort:
         self.socket = None
 
         self.openSocket()
-        self.mainLoop()
+        self.sampling_from_json()
+        # self.mainLoop()
         # self.exhaust_sampling()
         self.closeSocket()
 
@@ -75,33 +76,15 @@ class TrttPort:
         reward = 0
 
         """
-            First level of reward represents hitting info
-        """
-        hitted = False
-        # theoretical value of boundary distance is 0.0776
-        if distance_info[0] > 0.08:  # ball was not hitted
-            hitted = False
-            reward += 0
-
-        # ball was hitted on the boundary
-        elif 0.06 < distance_info[0] <= 0.08:
-            hitted = True
-            reward += -50 * distance_info[0] + 4
-
-        else:  # ball is close to the racket center, distance_info[0] <= 0.06
-            hitted = True
-            reward += 1
-
-        """
             Second level of reward represents landing position
         """
-        target_coordinate = [0.35, -3.13, -0.99]
+        target_coordinate = [0.35, -2.93, -0.99]
         # compute Euclidean distance in x and y coordinate space
         distance_to_target = distance.euclidean(
             landing_info[0:2], target_coordinate[0:2])
         #print("\ndistance to target: ", distance_to_target)
         # print("\n")
-        if hitted is True and distance_to_target <= 3.0:
+        if distance_to_target <= 3.0:
             reward += -1 * distance_to_target + 3
         else:
             reward += 0
@@ -167,7 +150,8 @@ class TrttPort:
             #t3 = datetime.datetime.now()
             # print(t3-t2)
             # print("\n\n")
-            action_json = {"T": self.current_action[0], "delta_t0": self.current_action[1]}
+            action_json = {
+                "T": self.current_action[0], "delta_t0": self.current_action[1]}
 
             # Try a fixed action
             action_json = {"T": 0.3631, "delta_t0": 0.88}
@@ -222,29 +206,59 @@ class TrttPort:
     def exhaust_sampling(self):
         data_list = list()
         print("start of exhaust sampling")
-        for T in np.arange(0.3, 0.50001, 0.005):
-            for delta_t0 in np.arange(0.8, 1.00001, 0.005):
-                data = dict()
-                print("\n====>           T: ", T,
-                      "\n====>    delta_t0: ", delta_t0)
-                ball_obs_json = self.socket.recv_json()
+        for T in np.arange(0.45, 0.450001, 0.005):
+            for delta_t0 in np.arange(0.86, 0.8600001, 0.01):
+                for repeat in range(100):
+                    data = dict()
+                    print("\n====>    delta_t0: ", delta_t0,
+                          "\n====>           T: ", T)
+                    ball_obs_json = self.socket.recv_json()
 
-                action_json = {"T": T, "delta_t0": delta_t0}
-                self.socket.send_json(action_json)
+                    action_json = {"T": T, "delta_t0": delta_t0}
+                    self.socket.send_json(action_json)
 
-                reward_info_json = self.socket.recv_json()
-                current_landing_info = reward_info_json["landing_point"]
-                current_ball_racket_dist_info = reward_info_json["min_distance"]
+                    reward_info_json = self.socket.recv_json()
+                    current_landing_info = reward_info_json["landing_point"]
+                    current_ball_racket_dist_info = reward_info_json["min_distance"]
 
-                policy_updated_json = {"policy_ready": True}
-                self.socket.send_json(policy_updated_json)
-                data["T"] = T
-                data["delta_t0"] = delta_t0
-                data["landing_info"] = current_landing_info
-                data["current_ball_racket_dist_info"] = current_ball_racket_dist_info
-                data_list.append(data)
+                    policy_updated_json = {"policy_ready": True}
+                    self.socket.send_json(policy_updated_json)
+                    data["T"] = T
+                    data["delta_t0"] = delta_t0
+                    data["landing_info"] = current_landing_info
+                    data["current_ball_racket_dist_info"] = current_ball_racket_dist_info
+                    data_list.append(data)
         with open("/tmp/data_list.json", 'w') as outfile:
             json.dump(data_list, outfile)
+
+    def sampling_from_json(self):
+        counter = 0
+        while True:
+            sampling_file = rel_path('../config/sampling.json')
+            with open(sampling_file) as j_file:
+                j_obj = json.load(j_file)
+                T = j_obj["T"]
+                delta_t0 = j_obj["delta_t0"]
+                #w = j_obj["w"]
+                if counter % 2 == 0:
+                    w = -1.5
+                else:
+                    w = -2.0
+                #w  = -1.8
+                counter += 1
+            print("\n====>    delta_t0: ", delta_t0,
+                  "\n====>           T: ", T, "\n====>           w: ", w,)
+            ball_obs_json = self.socket.recv_json()
+
+            action_json = {"T": T, "delta_t0": delta_t0, "w": w}
+            self.socket.send_json(action_json)
+
+            reward_info_json = self.socket.recv_json()
+            current_landing_info = reward_info_json["landing_point"]
+            current_ball_racket_dist_info = reward_info_json["min_distance"]
+
+            policy_updated_json = {"policy_ready": True}
+            self.socket.send_json(policy_updated_json)
 
 
 if __name__ == "__main__":
