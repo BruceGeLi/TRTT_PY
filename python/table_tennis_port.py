@@ -239,12 +239,8 @@ class TrttPort:
                 j_obj = json.load(j_file)
                 T = j_obj["T"]
                 delta_t0 = j_obj["delta_t0"]
-                #w = j_obj["w"]
-                if counter % 2 == 0:
-                    w = -1.5
-                else:
-                    w = -2.0
-                #w  = -1.8
+                w = j_obj["w"]
+
                 counter += 1
             print("\n====>    delta_t0: ", delta_t0,
                   "\n====>           T: ", T, "\n====>           w: ", w,)
@@ -254,9 +250,13 @@ class TrttPort:
             self.socket.send_json(action_json)
 
             reward_info_json = self.socket.recv_json()
+            print(reward_info_json)
             current_landing_info = reward_info_json["landing_point"]
+            print(current_landing_info)
             current_ball_racket_dist_info = reward_info_json["min_distance"]
-
+            print(current_ball_racket_dist_info)
+            current_hit_info = reward_info_json["hit"]
+            print(current_hit_info)
             policy_updated_json = {"policy_ready": True}
             self.socket.send_json(policy_updated_json)
 
