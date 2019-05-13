@@ -128,7 +128,8 @@ class BarrettKinematics:
 
 if __name__ == "__main__":
     bk = BarrettKinematics()
-    q = [1.5707, 1.5707, 1.5707, 1.5707, 0.78535, 1.5707, 1.5707]
+    #q = [1.5707, 1.5707, 1.5707, 1.5707, 0.78535, 1.5707, 1.5707]
+    q = [0.78535, 0.78535, 0.78535, 0.78535, 0.78535, 0.78535, 0.78535]
     [pos, ori] = bk.end_effector(q)
     print("pos", pos)
     print("ori", ori)

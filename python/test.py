@@ -5,6 +5,8 @@ The most annoying thing is the shape!
 
 import tensorflow as tf
 import numpy as np
+import pathlib
+from sklearn.preprocessing import PolynomialFeatures
 tfd = tf.distributions
 
 # Define a batch of two scalar valued Normals.
@@ -35,9 +37,31 @@ loss = vector * -1
 sess = tf.Session()
 
 result = sess.run(loss)
-print(result)
+#print(result)
 
-n1 = np.array([[1.],[2.]])
-n2 = np.array([[5.],[4.]])
-n3 = n1 - n2
-print(n3 )
+n1 = np.array([[1,2,3],[4,5,6]])
+n2 = np.array(n1)
+n3 = n1
+a1 = np.array([1,2,3])
+n4 = np.array([1,2,3,4,5,6])
+#print(np.matmul(np.expand_dims(a1, axis=1), np.expand_dims(a1, axis=0)))
+
+action_sample = np.random.multivariate_normal(
+                    [1, 2], [[1,0],[0,1]])
+
+#print(action_sample)
+
+x1 = 3* np.identity(3)
+x2 = 2 * np.identity(3)
+x3 = np.ones(2)+1
+x4 = np.ones(2)
+x5 = np.array([[1,2],[3,4]])
+
+X = np.arange(6).reshape(3, 2)
+print(np.reshape(X, -1))
+Y = np.expand_dims(np.array([2,3]), axis=0)
+
+s1 = str("abc")
+s1 += "bhd" + "hb"
+
+print(s1) 

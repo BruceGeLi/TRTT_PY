@@ -67,8 +67,10 @@ class TrttPort:
     def openSocket(self):
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REP)
-        self.socket.bind("tcp://*:8181")
-
+        try:
+            self.socket.bind("tcp://*:8181")
+        except:
+            self.socket.bind("tcp://*:8182")
     def closeSocket(self):
         pass
 

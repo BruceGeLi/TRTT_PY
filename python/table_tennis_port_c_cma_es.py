@@ -11,36 +11,59 @@ import time
 import json
 import datetime
 
+plt.rcParams.update({'font.size': 20})
+
 '''
 Hyper parameters:
 '''
 MAX_EPS = 20000      # Max episodes
 STATE_DIM = 5       # Dimension of feature function of context s
 ACTION_DIM = 3      # Dimension of parameters of action a
-COV_SCALE = 1
+
 
 # Valid boundary for delta_t0, T, w
 ACTION_BOUNDARY = np.array([[0.70, 1.1], [0.45, 0.65], [-2.2, -1.3]])
 
-TARGET_COORDINATE = [0.35, -2.93, -0.99]
-
-INITIAL_ACTION = [0.90, 0.5, -1.75]
-
-STOP_THRESHOLD = 3.8
-
 SAMPLE_NUMBER = None
 
 class TrttPortCCmaEs:
-    def __init__(self):
-        self.ccmaes = ContextualCmaEs(state_dim=STATE_DIM, action_dim=ACTION_DIM, initial_action= INITIAL_ACTION, sample_number=SAMPLE_NUMBER, cov_scale=COV_SCALE, context_feature_type='linear', baseline_feature_type='quadratic')
+    def __init__(self, args):
+        self.config_file = args.config_file
+
+        self.uri = ""
+        self.context_feature_type = ""
+        self.baseline_feature_type = ""
+        
+        self.TARGET_COORDINATE = [0.35, -2.93, -0.99]
+        self.INITIAL_ACTION = [0.90, 0.5, -1.75]
+        self.COV_SCALE = 1
+        self.STOP_THRESHOLD = 3.8
+
+        self.load_config()
+
+        self.ccmaes = ContextualCmaEs(state_dim=STATE_DIM, action_dim=ACTION_DIM, initial_action= self.INITIAL_ACTION, sample_number=SAMPLE_NUMBER, cov_scale=self.COV_SCALE, context_feature_type='linear', baseline_feature_type='quadratic')
 
         self.openSocket()
         self.mainLoop()
 
+        self.out_string = str("")
+    def load_config(self):
+        config_file = rel_path('../config/' + self.config_file)
+        with open(config_file) as j_file:
+            j_obj = json.load(j_file)
+            self.uri = j_obj["uri"]
+            self.context_feature_type = j_obj["context_feature_type"]
+            self.baseline_feature_type = j_obj["baseline_feature_type"]
+            self.TARGET_COORDINATE = j_obj["target_coordinate"]
+            self.INITIAL_ACTION = j_obj["initial_action"]
+            self.COV_SCALE = j_obj["cov_scale"]
+            self.STOP_THRESHOLD = j_obj["stop_threshold"]
+
+
     def openSocket(self):
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REP)
-        self.socket.bind("tcp://*:8181")
+        self.socket.bind(self.uri)
 
     def get_ball_state(self):
         ball_obs_json = self.socket.recv_json()
@@ -54,8 +77,8 @@ class TrttPortCCmaEs:
         return ball_state_array
 
     def bound_clip(self, delta_t0, T, w):
-        print("Before clip:\n====>    delta_t0: ", delta_t0,
-              "\n====>           T: ", T, "\n====>           w: ", w)
+        self.out_string += "\n\nAction before clip:\n====>    delta_t0: " + str(delta_t0) + "\n====>           T: " + str(T) + "\n====>           w: " + str(w)
+
         if delta_t0 < ACTION_BOUNDARY[0][0]:
             delta_t0 = ACTION_BOUNDARY[0][0]
         if delta_t0 > ACTION_BOUNDARY[0][1]:
@@ -71,8 +94,7 @@ class TrttPortCCmaEs:
         if w > ACTION_BOUNDARY[2][1]:
             w = ACTION_BOUNDARY[2][1]
 
-        print("After clip:\n====>    delta_t0: ", delta_t0,
-              "\n====>           T: ", T, "\n====>           w: ", w)
+        self.out_string += "\n\nAction after clip:\n====>    delta_t0: " + str(delta_t0) + "\n====>           T: " + str(T) + "\n====>           w: " + str(w)
         return delta_t0, T, w
 
     def export_action(self, delta_t0, T, w):
@@ -132,7 +154,7 @@ class TrttPortCCmaEs:
         if True == hit:
             # compute Euclidean distance in x and y coordinate space
             distance_to_target = distance.euclidean(
-                landing_info[0:2], TARGET_COORDINATE[0:2])
+                landing_info[0:2], self.TARGET_COORDINATE[0:2])
 
             if distance_to_target <= 3.0:
                 reward += -1 * pow(distance_to_target,1) + 3
@@ -140,7 +162,7 @@ class TrttPortCCmaEs:
                 reward += 0
         else:
             reward += 0
-        print("\n====>      reward: ", reward, "\n")
+        self.out_string += "\n\nReward:\n====>      reward: " + str(reward) + "\n"
         return reward
 
     def export_ok(self):
@@ -148,23 +170,24 @@ class TrttPortCCmaEs:
         self.socket.send_json(policy_updated_json)
 
     def mainLoop(self):
-        episode_counter = 0
-        update_counter = 1
+        external_episode_counter = 0
+        
         rw_list = list()
         en_list = list()
         N = self.ccmaes.get_recommand_sample_number()
         plt.figure(figsize=(18, 8), dpi=80)
         
-        while episode_counter < MAX_EPS:
+        while external_episode_counter < MAX_EPS:
             self.ccmaes.print_policy()
             temp_reward = 0.0
             for counter in range(N):
-                
+                internal_episode_counter, internal_update_counter = self.ccmaes.get_counters() 
                 # get state
                 state_info = self.get_ball_state()
-                print("\nEpisode: ", episode_counter+1)
-                print("\nState: ", state_info)
 
+                self.out_string = "\nEpisode: " + str(internal_episode_counter+1)                
+                self.out_string += "\n\nBall State: " + str(state_info)                
+                
                 # get action
                 action = self.ccmaes.generate_action(state_info)
 
@@ -184,40 +207,57 @@ class TrttPortCCmaEs:
 
                 # store
                 self.ccmaes.store_episode(state_info, action, reward)
-                self.export_ok()
-                episode_counter += 1
+                
+                print(self.out_string)
 
-            average_reward = temp_reward / N            
-            rw_list.append(average_reward)
-            if temp_reward / N > STOP_THRESHOLD:
-                print("\nTarget achieved! in episode ", episode_counter)
-                """
-                rw_list = rw_list[-500:]
-                x = range(len(rw_list))
-                plt.plot(x, rw_list)
-                plt.show()
-                """
+                if (internal_episode_counter + 1) % N != 0:
+                    self.export_ok()
+                external_episode_counter += 1
+            
+                   
+            
+            if temp_reward / N > self.STOP_THRESHOLD:
+                print("\nTarget achieved in episode:", internal_episode_counter+1, ", update time: ", internal_update_counter+1, " !!!")
                 break
-            plt.ion()
-            plt.cla()
-            x = np.arange(1,len(rw_list)+1) * N
-            plt.subplot(1,2,1)
-            plt.plot(x, rw_list)
-            plt.xlabel("Episode number")
-            plt.ylabel("Average reward")
 
             self.ccmaes.learn()
-            en_list.append(self.ccmaes.get_entropy())
-            plt.subplot(1,2,2)
-            plt.plot(en_list)
-            plt.xlabel("Generation number")
-            plt.ylabel("Entropy of distribution")
+
+            rw_list = self.ccmaes.get_average_reward_list()
+            plt.ion()
+            plt.clf()
+            ax1 = plt.subplot(1, 2, 1)
+            x = np.arange(1,len(rw_list)+1) * N
+            ax1.plot(x, rw_list)    
+            ax1.set_xlabel("Episode number")
+            ax1.set_ylabel("Average reward")
+            ax1.set_xlim([0, len(rw_list)*N])
+            ax2 = ax1.twiny()
+            ax2.set_xlabel("Gereration number")
+            ax2.set_xlim([0, len(rw_list)])
+            
+            en_list = self.ccmaes.get_entropy_list()
+            ax3 = plt.subplot(1, 2, 2)    
+            ax3.plot(x, en_list)
+            ax3.set_xlabel("Episode number")
+            ax3.set_ylabel("Entropy of distribution")
+            ax3.set_xlim([0, len(rw_list)*N])
+            ax4 = ax3.twiny()
+            ax4.set_xlabel("Gereration number")
+            ax4.set_xlim([0, len(rw_list)])    
             plt.pause(0.1)
 
-            update_counter += 1
+            # When all stuff are done, send ok to continue the simulation
+            self.export_ok()
+            
         plt.ioff()
         plt.show()
 
 
 if __name__ == "__main__":
-    ccmaes_port = TrttPortCCmaEs()
+    def rel_path(fname):
+        return os.path.join(os.path.dirname(__file__), fname)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('config_file', help='json file of the config info')
+    args = parser.parse_args()
+    ccmaes_port = TrttPortCCmaEs(args)
