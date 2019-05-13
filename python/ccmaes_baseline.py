@@ -15,6 +15,8 @@ STOP_THRESHOLD = -1e-10
 
 ACTION_DIM = 3      # Dimension of parameters of action a
 
+np.random.seed(1)
+
 # G matrix from normal distribution
 G = np.random.normal(0.0, 1.0, (ACTION_DIM, STATE_DIM))
 
@@ -22,26 +24,32 @@ G = np.random.normal(0.0, 1.0, (ACTION_DIM, STATE_DIM))
 INITIAL_ACTION = np.random.normal(0.0, 1.0, (ACTION_DIM))
 
 # create policy
+"""ccmaes = ContextualCmaEs(state_dim=STATE_DIM, action_dim=ACTION_DIM, initial_action=INITIAL_ACTION,
+                         context_feature_type='linear', baseline_feature_type='linear', save_file='/tmp/temp_save', load_file=None)
+"""
 ccmaes = ContextualCmaEs(state_dim=STATE_DIM, action_dim=ACTION_DIM, initial_action=INITIAL_ACTION,
-                         context_feature_type='linear', baseline_feature_type='linear')
+                         context_feature_type='linear', baseline_feature_type='linear', save_file=None, load_file=None)                         
+
 
 # initial counters
-episode_counter = 0
-update_counter = 1
+external_episode_counter = 0
+
 
 # reward_list
 rw_list = list()
 en_list = list()
+overall_en_list = list()
 # get recommanded sample number
 N = ccmaes.get_recommand_sample_number()
 plt.figure(figsize=(18, 8), dpi=80)
 
 
-while episode_counter < MAX_EPS:
+while external_episode_counter < MAX_EPS:
     ccmaes.print_policy()
     temp_reward = 0.0
     for counter in range(N):
-        print("\nEpisode: ", episode_counter+1)
+        internal_episode_counter, internal_update_counter = ccmaes.get_counters()
+        print("\nEpisode: ", internal_episode_counter+1)
         # get state
         state = np.random.uniform(1.0, 2.0, STATE_DIM)
         print("\nState: ", state)
@@ -56,30 +64,27 @@ while episode_counter < MAX_EPS:
         x = action + np.matmul(G, state)
 
         # Sphere case:
-        #reward += -np.matmul(x, x)
+        reward += -np.matmul(x, x)
 
         # Rosenbrock case:
-        for i in range(ACTION_DIM-1):
-           reward += -(100 * pow(x[i+1]-pow(x[i],2),2)+pow(1-x[i],2))
+        #for i in range(ACTION_DIM-1):
+        #   reward += -(100 * pow(x[i+1]-pow(x[i],2),2)+pow(1-x[i],2))
         print("\n====>      reward: ", reward, "\n")
         temp_reward += reward
 
         # store
         ccmaes.store_episode(state, action, reward)
-        episode_counter += 1
-
-    rw_list.append(temp_reward / N)
+        external_episode_counter += 1
 
     if temp_reward / N > STOP_THRESHOLD:
-        print("\nTarget achieved! in episode ", episode_counter)
-        """       
-        rw_list = rw_list[-50:]
-        x = range(len(rw_list))
-        plt.plot(x, rw_list)
-        plt.show()
-        """
+        print("\nTarget achieved in episode:", internal_episode_counter+1, ", update time: ", internal_update_counter+1)
         break
 
+
+
+
+    ccmaes.learn()
+    rw_list = ccmaes.get_average_reward_list()
     plt.ion()
     plt.clf()
     ax1 = plt.subplot(1, 2, 1)
@@ -93,20 +98,18 @@ while episode_counter < MAX_EPS:
     ax2.set_xlim([0, len(rw_list)])
 
 
-    ccmaes.learn()
-    en_list.append(ccmaes.get_entropy())
+    en_list, overall_en_list = ccmaes.get_entropy_list()
     
     ax3 = plt.subplot(1, 2, 2)    
-    ax3.plot(x, en_list)
+    ax3.plot(x, en_list, x, overall_en_list)
+    ax3.legend(["Entropy", "Overall Entropy"])
     ax3.set_xlabel("Episode number")
     ax3.set_ylabel("Entropy of distribution")
     ax3.set_xlim([0, len(rw_list)*N])
     ax4 = ax3.twiny()
-    ax4.set_xlabel("Gereration number")
+    ax4.set_xlabel("Gereration number")    
     ax4.set_xlim([0, len(rw_list)])    
 
-
     plt.pause(0.1)
-    update_counter += 1
 plt.ioff()
 plt.show()

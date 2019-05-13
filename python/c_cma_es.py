@@ -17,11 +17,12 @@ import math
 import time
 import json
 import datetime
+import pathlib
 from sklearn.preprocessing import PolynomialFeatures
 
 
 class ContextualCmaEs:
-    def __init__(self, state_dim, action_dim, initial_action, sample_number=None, cov_scale=1, context_feature_type='linear', baseline_feature_type='linear'):
+    def __init__(self, state_dim, action_dim, initial_action, sample_number=None, cov_scale=1, context_feature_type='linear', baseline_feature_type='linear', load_file=None, save_file=None, save_update_counter=5):
 
         #######################################################################
         # Initialize Hyper parameters
@@ -54,6 +55,10 @@ class ContextualCmaEs:
 
         # Regularization coefficient, to avoid inverse a zeros matrix
         self.RC = 1e-9
+
+        # File to save key arrays
+        self.save_file = save_file
+        self.save_update_counter = save_update_counter
 
         #######################################################################
         # Initialize scalars, vectors and matrices used for the algorithm
@@ -137,9 +142,34 @@ class ContextualCmaEs:
         #######################################################################
         # Initialize other stuff
         #######################################################################
-        self.entropy = 0.0
+        self.entropy_list = list()
+        self.overall_entropy_list = list()
+        self.average_reward_list = list()
         self.episode_counter = 0  # sample counter
-        self.update_counter = 1
+        self.update_counter = 0
+
+
+        #######################################################################
+        # If necessary,
+        # Continue training from stored data 
+        #######################################################################
+        if None != load_file:            
+            path = pathlib.Path(load_file)
+            file_name = str(path.absolute())
+            loaded_file = np.load(file_name)
+            
+            self.PM = loaded_file['PM']
+            self.CM = loaded_file['CM']
+            self.step_size = loaded_file['step_size']
+            self.PV_sigma = loaded_file['PV_sigma']
+            self.PV_c = loaded_file['PV_c']
+            self.update_counter = loaded_file['update_counter']
+            self.entropy_list = loaded_file['entropy_list'].tolist()
+            self.overall_entropy_list = loaded_file['overall_entropy_list'].tolist()
+            self.average_reward_list = loaded_file['average_reward_list'].tolist()
+            self.episode_counter = self.update_counter * self.N
+
+
 
     def process_feature_type_dimension(self, feature_type):
         POSSIBLE_FEATURE_TYPE = ['linear', 'quadratic']
@@ -147,8 +177,7 @@ class ContextualCmaEs:
 
         if 'linear' == feature_type:
             return 'linear', self.STATE_DIM + 1
-        elif 'quadratic' == feature_type:
-            print((int)((self.STATE_DIM * self.STATE_DIM + 3 * self.STATE_DIM + 2)/2))
+        elif 'quadratic' == feature_type:            
             return 'quadratic', (int)((self.STATE_DIM * self.STATE_DIM + 3 * self.STATE_DIM + 2)/2)
         else:
             assert False
@@ -203,8 +232,14 @@ class ContextualCmaEs:
         if self.episode_counter > 1:
             print("\nAverage reward: ", np.average(self.RV))
 
-    def get_entropy(self):
-        return self.entropy
+    def get_counters(self):
+        return self.episode_counter, self.update_counter        
+
+    def get_entropy_list(self):
+        return self.entropy_list, self.overall_entropy_list
+
+    def get_average_reward_list(self):
+        return self.average_reward_list
 
     def learn(self):
         # Update baseline weight vector
@@ -218,6 +253,9 @@ class ContextualCmaEs:
                           self.BFM[j])
             self.AV_E[j] = advantage
         # End for loop
+
+        # Compute and store average reward
+        self.average_reward_list.append(np.average(self.RV))
 
         # Get rank of estimated advantage vector, rank starts from 1, descending order
         advantage_rank_ascend = np.argsort(
@@ -273,8 +311,8 @@ class ContextualCmaEs:
         # Update evolution path parameters
         self.PV_sigma = (1 - self.c_sigma) * self.PV_sigma + math.sqrt(self.c_sigma*(2 - self.c_sigma)
                                                                        * self.mu_eff) * np.matmul(sp.linalg.fractional_matrix_power(self.CM, -0.5), self.YV)
-        # Update h_sigma
-        if pow(np.linalg.norm(self.PV_sigma), 2) / (self.ACTION_DIM * math.sqrt(1 - pow(1 - self.c_sigma, 2*self.update_counter))) < 2 + 4/(self.ACTION_DIM + 1):
+        # Update h_sigma, Note: avoid divided by 0
+        if pow(np.linalg.norm(self.PV_sigma), 2) / (self.ACTION_DIM * math.sqrt(1 - pow(1 - self.c_sigma, 2*(self.update_counter+1) ))) < 2 + 4/(self.ACTION_DIM + 1):
             self.h_sigma = 1
         else:
             self.h_sigma = 0
@@ -297,13 +335,23 @@ class ContextualCmaEs:
         self.CM = (1-self.c_1a - self.c_mu) * self.CM + self.c_1 * np.matmul(np.expand_dims(
             self.PV_c, axis=1), np.expand_dims(self.PV_c, axis=0)) + self.c_mu * self.SCM
 
-        # Compute entropy of the distribution
-        self.entropy = 0.5 * math.log(np.linalg.det(2*math.pi*math.e*self.CM))
-
+        # Compute entropy of the distribution and append it to list
+        self.entropy_list.append(0.5 * math.log(np.linalg.det(2*math.pi*math.e*self.CM)))
+        self.overall_entropy_list.append(0.5 * math.log(np.linalg.det(2*math.pi*math.e*self.step_size * self.CM)))
         # Update step size
         self.step_size = self.step_size * \
             math.exp(self.c_sigma / self.d_sigma *
                      (np.linalg.norm(self.PV_sigma) / self.enn - 1))
-
+        print("\n\nstep_size: ", self.step_size)
         # Update counters
         self.update_counter += 1
+
+        # Save key arrays
+        self.save()
+
+    def save(self):
+        if None != self.save_file and 0 == self.update_counter % self.save_update_counter:          
+            path = pathlib.Path(self.save_file)
+            file_name = str(path.absolute()) + "_" + str(self.update_counter)
+
+            np.savez(file_name, PM=self.PM, CM=self.CM, step_size=self.step_size, PV_sigma=self.PV_sigma, PV_c=self.PV_c, update_counter=self.update_counter, entropy_list=self.entropy_list, overall_entropy_list=self.overall_entropy_list, average_reward_list=self.average_reward_list)
