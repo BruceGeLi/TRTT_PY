@@ -3,7 +3,8 @@
     "context_feature_type": "linear",
     "baseline_feature_type": "quadratic",
     "target_coordinate": [0.35, -2.93, -0.99],
-    "initial_action": [0.90, 0.5, -1.75],
-    "cov_scale": 1.0,
+    "initial_time_values": [0.90, 0.5],
+    "initial_time_variance":[0.1, 0.1],
+    "cov_scale": 2.0,
     "stop_threshold": 3.8
 }

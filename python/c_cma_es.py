@@ -22,7 +22,7 @@ from sklearn.preprocessing import PolynomialFeatures
 
 
 class ContextualCmaEs:
-    def __init__(self, state_dim, action_dim, initial_action, sample_number=None, cov_scale=1, context_feature_type='linear', baseline_feature_type='linear', load_file=None, save_file=None, save_update_counter=5):
+    def __init__(self, state_dim, action_dim, initial_action, initial_cov=None, sample_number=None, cov_scale=1, context_feature_type='linear', baseline_feature_type='linear', load_file=None, save_file=None, save_update_counter=5):
 
         #######################################################################
         # Initialize Hyper parameters
@@ -77,8 +77,16 @@ class ContextualCmaEs:
         # Initialize the old policy matrix
         self.PM_O = np.zeros((self.CONTEXT_FEATURE_DIM, self.ACTION_DIM))
 
-        # Initialize the policy's covariance matrix
+        # Initialize the policy's covariance matrix with Identity matrix
         self.CM = np.identity(self.ACTION_DIM) * cov_scale
+
+        # Initialize covariance matrix with certain given values         
+        if initial_cov is None:
+            pass
+        else:            
+            assert (self.ACTION_DIM, self.ACTION_DIM) == np.shape(initial_cov), "Shape of initial covariance matrix is invalid!"
+            self.CM = initial_cov * cov_scale
+            
 
         # Initialize step size
         self.step_size = 1

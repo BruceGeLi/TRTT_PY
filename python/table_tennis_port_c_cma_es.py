@@ -18,11 +18,11 @@ Hyper parameters:
 '''
 MAX_EPS = 20000      # Max episodes
 STATE_DIM = 5       # Dimension of feature function of context s
-ACTION_DIM = 3      # Dimension of parameters of action a
+ACTION_DIM = 37      # Dimension of parameters of action a
 
 
 # Valid boundary for delta_t0, T, w
-ACTION_BOUNDARY = np.array([[0.70, 1.1], [0.45, 0.65], [-2.2, -1.3]])
+ACTION_BOUNDARY = np.array([[0.70, 1.1], [0.45, 0.65]])
 
 SAMPLE_NUMBER = None
 
@@ -35,13 +35,19 @@ class TrttPortCCmaEs:
         self.baseline_feature_type = ""
         
         self.TARGET_COORDINATE = [0.35, -2.93, -0.99]
-        self.INITIAL_ACTION = [0.90, 0.5, -1.75]
         self.COV_SCALE = 1
         self.STOP_THRESHOLD = 3.8
+        self.INITIAL_TIME_VALUES = [0.90, 0.5]
+        self.INITIAL_TIME_VARIANCE = [0.1, 0.1]
+
+        self.prior_promp_mean = None
+        self.prior_promp_cov = None
 
         self.load_config()
 
-        self.ccmaes = ContextualCmaEs(state_dim=STATE_DIM, action_dim=ACTION_DIM, initial_action= self.INITIAL_ACTION, sample_number=SAMPLE_NUMBER, cov_scale=self.COV_SCALE, context_feature_type='linear', baseline_feature_type='quadratic')
+        self.initial_mean, self.initial_cov = self.generate_initial_values()
+
+        self.ccmaes = ContextualCmaEs(state_dim=STATE_DIM, action_dim=ACTION_DIM, initial_action= self.initial_mean, initial_cov=self.initial_cov,sample_number=SAMPLE_NUMBER, cov_scale=self.COV_SCALE, context_feature_type='linear', baseline_feature_type='quadratic')
 
         self.openSocket()
         self.mainLoop()
@@ -54,10 +60,22 @@ class TrttPortCCmaEs:
             self.uri = j_obj["uri"]
             self.context_feature_type = j_obj["context_feature_type"]
             self.baseline_feature_type = j_obj["baseline_feature_type"]
-            self.TARGET_COORDINATE = j_obj["target_coordinate"]
-            self.INITIAL_ACTION = j_obj["initial_action"]
+            self.TARGET_COORDINATE = j_obj["target_coordinate"]            
             self.COV_SCALE = j_obj["cov_scale"]
             self.STOP_THRESHOLD = j_obj["stop_threshold"]
+            self.INITIAL_TIME_VALUES = j_obj["initial_time_values"]
+            self.INITIAL_TIME_VARIANCE = j_obj["initial_time_variance"]
+            
+        prior_promp_file = rel_path('../config/prior_promp.json')        
+        with open(prior_promp_file) as p_file:
+            p_obj = json.load(p_file)
+            self.prior_promp_mean = np.array(p_obj["model"]["mu_w"])
+            self.prior_promp_cov = np.array(p_obj["model"]["Sigma_w"])                
+
+    def generate_initial_values(self):
+        initial_mean = np.append(self.prior_promp_mean, self.INITIAL_TIME_VALUES)
+        initial_cov = np.block([[self.prior_promp_cov, np.zeros([35, 2])], [np.zeros([2, 35]), np.array([[self.INITIAL_TIME_VARIANCE[0], 0.0],[0.0, self.INITIAL_TIME_VARIANCE[1]]])]])
+        return initial_mean, initial_cov
 
 
     def openSocket(self):
@@ -76,8 +94,8 @@ class TrttPortCCmaEs:
 
         return ball_state_array
 
-    def bound_clip(self, delta_t0, T, w):
-        self.out_string += "\n\nAction before clip:\n====>    delta_t0: " + str(delta_t0) + "\n====>           T: " + str(T) + "\n====>           w: " + str(w)
+    def bound_clip(self, delta_t0, T):
+        self.out_string += "\n\nAction before clip:\n====>    delta_t0: " + str(delta_t0) + "\n====>           T: " + str(T)
 
         if delta_t0 < ACTION_BOUNDARY[0][0]:
             delta_t0 = ACTION_BOUNDARY[0][0]
@@ -89,16 +107,13 @@ class TrttPortCCmaEs:
         if T > ACTION_BOUNDARY[1][1]:
             T = ACTION_BOUNDARY[1][1]
 
-        if w < ACTION_BOUNDARY[2][0]:
-            w = ACTION_BOUNDARY[2][0]
-        if w > ACTION_BOUNDARY[2][1]:
-            w = ACTION_BOUNDARY[2][1]
+        self.out_string += "\n\nAction after clip:\n====>    delta_t0: " + str(delta_t0) + "\n====>           T: " + str(T) 
+        return delta_t0, T
 
-        self.out_string += "\n\nAction after clip:\n====>    delta_t0: " + str(delta_t0) + "\n====>           T: " + str(T) + "\n====>           w: " + str(w)
-        return delta_t0, T, w
-
-    def export_action(self, delta_t0, T, w):
-        action_json = {"T": T, "delta_t0": delta_t0, "w": w}
+    def export_action(self, promp_mean, delta_t0, T):
+        promp_mean = promp_mean.tolist()        
+        
+        action_json = {"promp_mean":promp_mean, "T": T, "delta_t0": delta_t0}
         self.socket.send_json(action_json)
 
     def get_reward_info(self):
@@ -174,11 +189,12 @@ class TrttPortCCmaEs:
         
         rw_list = list()
         en_list = list()
+        overall_en_list = list()
         N = self.ccmaes.get_recommand_sample_number()
-        plt.figure(figsize=(18, 8), dpi=80)
+        plt.figure(figsize=(22, 10), dpi=80)
         
         while external_episode_counter < MAX_EPS:
-            self.ccmaes.print_policy()
+            #self.ccmaes.print_policy()
             temp_reward = 0.0
             for counter in range(N):
                 internal_episode_counter, internal_update_counter = self.ccmaes.get_counters() 
@@ -192,17 +208,17 @@ class TrttPortCCmaEs:
                 action = self.ccmaes.generate_action(state_info)
 
                 # bound clip action to make it valid for robot
-                bound_action = self.bound_clip(action[0], action[1], action[2])
+                bound_action = self.bound_clip(action[-2], action[-1])
 
                 self.export_action(
-                    bound_action[0], bound_action[1], bound_action[2])
+                    action[:-2], bound_action[0], bound_action[1])
 
                 # receive reward info
                 hit_info, landing_info, ball_racket_dist_info = self.get_reward_info()
 
                 # generate reward
                 reward = self.generateReward(
-                    action, hit_info, landing_info, ball_racket_dist_info)
+                    action[-2:], hit_info, landing_info, ball_racket_dist_info)
                 temp_reward += reward
 
                 # store
@@ -235,9 +251,10 @@ class TrttPortCCmaEs:
             ax2.set_xlabel("Gereration number")
             ax2.set_xlim([0, len(rw_list)])
             
-            en_list = self.ccmaes.get_entropy_list()
+            en_list, overall_en_list = self.ccmaes.get_entropy_list()
             ax3 = plt.subplot(1, 2, 2)    
-            ax3.plot(x, en_list)
+            ax3.plot(x, en_list, x, overall_en_list)
+            ax3.legend(["Entropy", "Overall Entropy"])
             ax3.set_xlabel("Episode number")
             ax3.set_ylabel("Entropy of distribution")
             ax3.set_xlim([0, len(rw_list)*N])
