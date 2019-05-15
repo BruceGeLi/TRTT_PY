@@ -11,9 +11,9 @@ MAX_EPS = 500000000      # Max episodes
 STATE_DIM = 5      # Dimension of context s
 
 # Average reward to stop the training
-STOP_THRESHOLD = -1e-10
+STOP_THRESHOLD = -1e-5
 
-ACTION_DIM = 3      # Dimension of parameters of action a
+ACTION_DIM = 8      # Dimension of parameters of action a
 
 np.random.seed(1)
 
@@ -111,5 +111,8 @@ while external_episode_counter < MAX_EPS:
     ax4.set_xlim([0, len(rw_list)])    
 
     plt.pause(0.1)
+    #plt.savefig("/tmp/temp_fig"+str(internal_update_counter), dpi=100,format='png')
+    
+
 plt.ioff()
 plt.show()
