@@ -6,5 +6,6 @@
     "initial_time_values": [0.90, 0.5],
     "initial_time_variance":[0.02, 0.1],
     "cov_scale": 1.0,
-    "stop_threshold": 3.8
+    "stop_threshold": 5.2,
+    "opponent_court": [-0.7625, 0.7625, -3.3, -1.93]
 }

@@ -58,10 +58,15 @@ x4 = np.ones(2)
 x5 = np.array([[1,2],[3,4]])
 
 X = np.arange(6).reshape(3, 2)
-print(np.reshape(X, -1))
+
 Y = np.expand_dims(np.array([2,3]), axis=0)
 
-s1 = str("abc")
-s1 += "bhd" + "hb"
+s1 = np.array([[1,2,3],[3,4,5],[5,6,7]])
+s2 = np.zeros([3,2])
+s3 = np.zeros([2,3])
+s4 = np.block([[s1, s2], [s3, np.array([[0.1, 0.0],[0.0, 0.1]])]])
 
-print(s1) 
+h = np.arange(16)
+g = h.reshape((4,4))
+print(g)
+print(g[0:3,3])

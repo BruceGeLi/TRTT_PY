@@ -2,6 +2,8 @@ import zmq
 from c_cma_es import ContextualCmaEs
 import argparse
 import matplotlib.pyplot as plt
+from mpl_toolkits import mplot3d
+from matplotlib import cm
 import numpy as np
 import scipy as sp
 from scipy.spatial import distance
@@ -40,21 +42,23 @@ class TrttPortCCmaEs:
         self.STOP_THRESHOLD = 3.8
         self.INITIAL_TIME_VALUES = [0.90, 0.5]
         self.INITIAL_TIME_VARIANCE = [0.1, 0.1]
+        self.OPPONENT_COURT_COORDINATE = None
 
         self.prior_promp_mean = None
         self.prior_promp_cov = None
-
         self.load_config()
 
         self.initial_mean, self.initial_cov = self.generate_initial_values()
 
         self.ccmaes = ContextualCmaEs(state_dim=STATE_DIM, action_dim=ACTION_DIM, initial_action=self.initial_mean, initial_cov=self.initial_cov,
-                                      sample_number=SAMPLE_NUMBER, cov_scale=self.COV_SCALE, context_feature_type='linear', baseline_feature_type='quadratic', save_file='/tmp/temp_save_May_14_update_', save_update_counter=20, load_file='/tmp/temp_save_May_14_update__200.npz')
+                                      sample_number=SAMPLE_NUMBER, cov_scale=self.COV_SCALE, context_feature_type='linear', baseline_feature_type='quadratic', save_file=rel_path('../data/temp_save_May_16_update'), save_update_counter=10, load_file=rel_path('../data/temp_save_May_16_update_20.npz'))
 
+        self.out_string = str("")
+        self.test_reward_function()        
+        
         self.openSocket()
         self.mainLoop()
 
-        self.out_string = str("")
 
     def load_config(self):
         config_file = rel_path('../config/' + self.config_file)
@@ -68,6 +72,7 @@ class TrttPortCCmaEs:
             self.STOP_THRESHOLD = j_obj["stop_threshold"]
             self.INITIAL_TIME_VALUES = j_obj["initial_time_values"]
             self.INITIAL_TIME_VARIANCE = j_obj["initial_time_variance"]
+            self.OPPONENT_COURT_COORDINATE = j_obj["opponent_court"]
 
         prior_promp_file = rel_path('../config/prior_promp.json')
         with open(prior_promp_file) as p_file:
@@ -93,9 +98,9 @@ class TrttPortCCmaEs:
         initial_cov = np.block([[temp_cov, np.zeros([7, 1])], [
                                np.zeros([1, 7]), self.INITIAL_TIME_VARIANCE[0]]])
         """
-        initial_cov = np.eye(8)*0.02
+        initial_cov = np.eye(8) * 0.02
         print(initial_cov)
-        
+
         return initial_mean, initial_cov
 
     def openSocket(self):
@@ -164,17 +169,18 @@ class TrttPortCCmaEs:
             Reward contains the info about:
             1. the distance between sampled action to its valid range (if the sampled action is out of the valid range and therefore may lead danger to robot) 
             2. minimum distance between racket and ball if not hit
-            3. the landing position to target landing position
-            4. other stuff
+            3. landing to opponent's court or not?
+            4. the landing position to target landing position
+            5. other stuff
         """
 
-        reward = 0
+        reward = 0.0
 
         # Process action validity
         action_valid = True
         distance_to_valid_action = 0.0
 
-        print(action)
+        #print(action)
 
         #ACTION_BOUNDARY = np.array([[0.70, 1.1], [0.45, 0.65]])
 
@@ -200,9 +206,10 @@ class TrttPortCCmaEs:
             reward += -distance_to_valid_action
         else:  # Action is in valid range
             reward += 0
-
+        
         # Process hitting and minimum distance between ball and racket
-        hit = False
+        hit = True
+        
         # hit or not
         if True == action_valid and hit_info[0] < 0.0:
             hit = False
@@ -213,22 +220,90 @@ class TrttPortCCmaEs:
         else:
             reward += 0
             hit = False
-
-        # Process landing position
+        
+        # Process opponent's court?
+        land_opponent_court = True
+        distance_to_opponent_court = [0.0, 0.0]
+        # land on opponent's side or not?
         if True == hit:
+            
+            if landing_info[0] < self.OPPONENT_COURT_COORDINATE[0]:
+                land_opponent_court = False
+                distance_to_opponent_court[0] = self.OPPONENT_COURT_COORDINATE[0] - landing_info[0]
+
+            elif landing_info[0] > self.OPPONENT_COURT_COORDINATE[1]:
+                land_opponent_court = False
+                distance_to_opponent_court[0] = landing_info[0] - self.OPPONENT_COURT_COORDINATE[1]
+            else:
+                pass
+            
+            if landing_info[1] < self.OPPONENT_COURT_COORDINATE[2]:
+                land_opponent_court = False
+                distance_to_opponent_court[1] = self.OPPONENT_COURT_COORDINATE[2] - landing_info[1]
+                
+            elif landing_info[1] > self.OPPONENT_COURT_COORDINATE[3]:
+                land_opponent_court = False
+                distance_to_opponent_court[1] = landing_info[1] - self.OPPONENT_COURT_COORDINATE[3]
+            else:
+                pass
+            
+            if True == land_opponent_court:
+                reward += 2
+            else:
+                
+                reward += 2 - min([pow(distance_to_opponent_court[0], 2)+ pow   (distance_to_opponent_court[1], 2), 2.0])            
+                
+        else:
+            land_opponent_court = False
+            reward += 0
+        
+        
+        # Process landing position
+        if True == land_opponent_court:
             # compute Euclidean distance in x and y coordinate space
             distance_to_target = distance.euclidean(
                 landing_info[0:2], self.TARGET_COORDINATE[0:2])
-
-            if distance_to_target <= 3.0:
-                reward += -1 * pow(distance_to_target, 1) + 3
-            else:
-                reward += 0
+            reward += 2.231 - pow(distance_to_target, 2)
+            
         else:
             reward += 0
+        self.out_string += "\n\nReward Info:\n====>         hit: " + \
+            str(hit) + "\n"
+        self.out_string += "\n====> hit opponent: " + \
+            str(land_opponent_court) + "\n"
         self.out_string += "\n\nReward:\n====>      reward: " + \
             str(reward) + "\n"
+        
         return reward
+
+    def test_reward_function(self):        
+
+        xs = np.linspace(-2.0, 2.0, 31)
+        ys = np.linspace(-5.0, 0.0, 201)
+        rs = np.zeros((201, 31))
+        
+        print(self.generateReward(0.9, [1.0], [-0.76, -1.93], [0.1]))
+        asd
+        for i, x in enumerate(xs):
+            print(i, x )
+            for j, y in enumerate(ys):
+                rs[j,i] = self.generateReward(0.9, [1.0], [x,y], [0.1])
+        """
+        xs, ys = np.meshgrid(xs, ys)
+                
+        fig = plt.figure()
+        ax = fig.gca(projection='3d')
+        ax.plot_surface(xs, ys, rs,cmap=cm.coolwarm,
+                       linewidth=0, antialiased=False)
+        
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
+        ax.set_zlabel('r')
+        """
+        plt.contourf(xs, ys, rs)
+        plt.colorbar()
+        plt.show()
+
 
     def export_ok(self):
         policy_updated_json = {"policy_ready": True}
@@ -273,7 +348,7 @@ class TrttPortCCmaEs:
                 #    action[-2:], hit_info, landing_info, ball_racket_dist_info)
                 reward = self.generateReward(
                     action[-1], hit_info, landing_info, ball_racket_dist_info)
-                
+
                 temp_reward += reward
 
                 # store
@@ -316,9 +391,10 @@ class TrttPortCCmaEs:
             ax4.set_xlabel("Gereration number")
             ax4.set_xlim([0, len(rw_list)])
             plt.pause(0.1)
-            if 0 == (internal_update_counter+1)%20:
-                plt.savefig(rel_path('../figure/part_promp_May14_update'+str(internal_update_counter+1)), dpi=100,format='png')
-            
+            if 0 == (internal_update_counter+1) % 20:
+                plt.savefig(rel_path('../figure/part_promp_May16_update' +
+                                     str(internal_update_counter+1)), dpi=100, format='png')
+
             # When all stuff are done, send ok to continue the simulation
             self.export_ok()
 
