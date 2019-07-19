@@ -6,6 +6,8 @@ The most annoying thing is the shape!
 import tensorflow as tf
 import numpy as np
 import pathlib
+import datetime
+
 from sklearn.preprocessing import PolynomialFeatures
 tfd = tf.distributions
 
@@ -39,34 +41,11 @@ sess = tf.Session()
 result = sess.run(loss)
 #print(result)
 
-n1 = np.array([[1,2,3],[4,5,6]])
-n2 = np.array(n1)
-n3 = n1
-a1 = np.array([1,2,3])
-n4 = np.array([1,2,3,4,5,6])
-#print(np.matmul(np.expand_dims(a1, axis=1), np.expand_dims(a1, axis=0)))
+t1 = datetime.datetime.now()
 
-action_sample = np.random.multivariate_normal(
-                    [1, 2], [[1,0],[0,1]])
+a = np.array([1, 3, 5, 6, 9, 10, 14, 15, 56])
+b = np.where(np.logical_and(a>=6, a<=10))
 
-#print(action_sample)
-
-x1 = 3* np.identity(3)
-x2 = 2 * np.identity(3)
-x3 = np.ones(2)+1
-x4 = np.ones(2)
-x5 = np.array([[1,2],[3,4]])
-
-X = np.arange(6).reshape(3, 2)
-
-Y = np.expand_dims(np.array([2,3]), axis=0)
-
-s1 = np.array([[1,2,3],[3,4,5],[5,6,7]])
-s2 = np.zeros([3,2])
-s3 = np.zeros([2,3])
-s4 = np.block([[s1, s2], [s3, np.array([[0.1, 0.0],[0.0, 0.1]])]])
-
-h = np.arange(16)
-g = h.reshape((4,4))
-print(g)
-print(g[0:3,3])
+t2 = datetime.datetime.now()
+t3 = t2-t1
+print(t3)
