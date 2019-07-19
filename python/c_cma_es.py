@@ -69,7 +69,6 @@ class ContextualCmaEs:
         #######################################################################
 
         # Initialize the Normal Distribution of the Policy
-
         # Initialize the policy matrix
         self.PM = np.zeros((self.CONTEXT_FEATURE_DIM, self.ACTION_DIM))
         self.PM[0] = initial_action
@@ -166,6 +165,8 @@ class ContextualCmaEs:
             file_name = str(path.absolute())
             loaded_file = np.load(file_name)
             
+            assert (self.PM.shape == np.shape(loaded_file['PM'])), "Loaded data's dimension is not compatiable with current training data."
+
             self.PM = loaded_file['PM']
             self.CM = loaded_file['CM']
             self.step_size = loaded_file['step_size']
@@ -207,6 +208,7 @@ class ContextualCmaEs:
         # Compute Action's Gaussain distribution
         context_feature = self.generate_feature_function(
             self.CONTEXT_FEATURE_TYPE, state_info)
+        
         action_mean = np.matmul(np.transpose(self.PM), context_feature)
         action_cov = pow(self.step_size, 2) * self.CM
         # Sample an action from Gaussain distribution
