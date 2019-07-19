@@ -1,0 +1,12 @@
+{    
+    "context_feature_type": "linear",
+    "baseline_feature_type": "quadratic",
+    "target_coordinate": [0.35, -2.93, -0.99],
+    "initial_time_values": [0.90, 0.5],
+    "initial_time_variance":[0.02, 0.1],
+    "cov_scale": 1.0,
+    "stop_threshold": 5.3,
+    "opponent_court": [-0.7625, 0.7625, -3.3, -1.93],
+    "training_mode": 4,
+    "max_reward": 5.231
+}

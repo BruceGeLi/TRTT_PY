@@ -36,6 +36,8 @@ class TrttPort:
             raise argparse.ArgumentTypeError(
                 'arg "train": boolean value expected.')
 
+        self.batch_num = args.batch_num
+        self.reuse_num = args.reuse_num
         self.ep_num = args.ep_num
         self.learning_rate = args.lr
         self.hidden_layer_number = args.hl
@@ -44,7 +46,7 @@ class TrttPort:
         self.save_dir_file = args.save_dir_file
         self.restore_dir_file = args.restore_dir_file
         self.loss_dir_file = args.loss_dir_file
-        self.policyGradient = None  
+        self.policyGradient = None
         self.save_iterator = 0
         self.current_ball_state = None
         self.current_action = None
@@ -57,14 +59,18 @@ class TrttPort:
         self.socket = None
 
         self.openSocket()
-        self.mainLoop()
+        self.sampling_from_json()
+        # self.mainLoop()
+        # self.exhaust_sampling()
         self.closeSocket()
 
     def openSocket(self):
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REP)
-        self.socket.bind("tcp://*:8181")
-
+        try:
+            self.socket.bind("tcp://*:8181")
+        except:
+            self.socket.bind("tcp://*:8182")
     def closeSocket(self):
         pass
 
@@ -72,33 +78,15 @@ class TrttPort:
         reward = 0
 
         """
-            First level of reward represents hitting info
-        """
-        hitted = False
-        # theoretical value of boundary distance is 0.0776
-        if distance_info[0] > 0.08:  # ball was not hitted
-            hitted = False
-            reward += 0
-
-        # ball was hitted on the boundary
-        elif 0.06 < distance_info[0] <= 0.08:
-            hitted = True
-            reward += -50 * distance_info[0] + 4
-
-        else:  # ball is close to the racket center, distance_info[0] <= 0.06
-            hitted = True
-            reward += 1
-
-        """
             Second level of reward represents landing position
         """
-        target_coordinate = [0.35, -3.13, -0.99]
+        target_coordinate = [0.35, -2.93, -0.99]
         # compute Euclidean distance in x and y coordinate space
         distance_to_target = distance.euclidean(
             landing_info[0:2], target_coordinate[0:2])
         #print("\ndistance to target: ", distance_to_target)
         # print("\n")
-        if hitted is True and distance_to_target <= 3.0:
+        if distance_to_target <= 3.0:
             reward += -1 * distance_to_target + 3
         else:
             reward += 0
@@ -110,7 +98,8 @@ class TrttPort:
 
     def mainLoop(self):
         self.policyGradient = PolicyGradient(on_train=self.on_train,
-                                             ball_state_dimension=6, action_dimension=2, hidden_layer_dimension=self.hidden_neural_number, learning_rate=self.learning_rate, output_graph=False, restore_dir_file=self.restore_dir_file)
+                                             ball_state_dimension=6, hidden_layer_dimension=self.hidden_neural_number, learning_rate=self.learning_rate, output_graph=False, restore_dir_file=self.restore_dir_file,
+                                             batch_num=self.batch_num, reuse_num=self.reuse_num)
 
         """
         If Tensorflow-gpu is used, the first action will take quite long time to compute
@@ -134,7 +123,7 @@ class TrttPort:
             """
             print("\n--- Waiting for ball observation...")
             ball_obs_json = self.socket.recv_json()
-            
+
             print("--- Ball observation received!\n")
             self.current_ball_state = ball_obs_json["ball_obs"]
 
@@ -157,7 +146,7 @@ class TrttPort:
                 self.current_ball_state).tolist()
             print("--- Hitting parameters computed!\n\n")
 
-            print("====>           T: {:.3f}\n====>    delta_t0: {:.3f}".format(
+            print("====>           T: {:.6f}\n====>    delta_t0: {:.6f}".format(
                 self.current_action[0], self.current_action[1]))
 
             #t3 = datetime.datetime.now()
@@ -167,7 +156,7 @@ class TrttPort:
                 "T": self.current_action[0], "delta_t0": self.current_action[1]}
 
             # Try a fixed action
-            #action_json = {"T": 0.455, "delta_t0": 0.837}
+            action_json = {"T": 0.3631, "delta_t0": 0.88}
             self.socket.send_json(action_json)
             print("\n")
             print("--- Action exported!\n")
@@ -190,7 +179,7 @@ class TrttPort:
             self.current_reward = self.generateReward(
                 self.current_landing_info, self.current_ball_racket_dist_info)
             print("====>      Reward: {:.3f}\n".format(self.current_reward))
-            self.policyGradient.store_transition(
+            self.policyGradient.store_episode(
                 self.current_ball_state, self.current_action, self.current_reward)
             print("------------------------------------")
             """
@@ -215,6 +204,64 @@ class TrttPort:
             self.socket.send_json(policy_updated_json)
             print("--- Policy updated!")
         self.policyGradient.print_loss(self.loss_dir_file)
+
+    def exhaust_sampling(self):
+        data_list = list()
+        print("start of exhaust sampling")
+        for T in np.arange(0.45, 0.450001, 0.005):
+            for delta_t0 in np.arange(0.86, 0.8600001, 0.01):
+                for repeat in range(100):
+                    data = dict()
+                    print("\n====>    delta_t0: ", delta_t0,
+                          "\n====>           T: ", T)
+                    ball_obs_json = self.socket.recv_json()
+
+                    action_json = {"T": T, "delta_t0": delta_t0}
+                    self.socket.send_json(action_json)
+
+                    reward_info_json = self.socket.recv_json()
+                    current_landing_info = reward_info_json["landing_point"]
+                    current_ball_racket_dist_info = reward_info_json["min_distance"]
+
+                    policy_updated_json = {"policy_ready": True}
+                    self.socket.send_json(policy_updated_json)
+                    data["T"] = T
+                    data["delta_t0"] = delta_t0
+                    data["landing_info"] = current_landing_info
+                    data["current_ball_racket_dist_info"] = current_ball_racket_dist_info
+                    data_list.append(data)
+        with open("/tmp/data_list.json", 'w') as outfile:
+            json.dump(data_list, outfile)
+
+    def sampling_from_json(self):
+        counter = 0
+        while True:
+            sampling_file = rel_path('../config/sampling.json')
+            with open(sampling_file) as j_file:
+                j_obj = json.load(j_file)
+                T = j_obj["T"]
+                delta_t0 = j_obj["delta_t0"]
+                w = j_obj["w"]
+
+                counter += 1
+            print("\n====>    delta_t0: ", delta_t0,
+                  "\n====>           T: ", T, "\n====>           w: ", w,)
+            ball_obs_json = self.socket.recv_json()
+
+            action_json = {"T": T, "delta_t0": delta_t0, "w": w}
+            self.socket.send_json(action_json)
+
+            reward_info_json = self.socket.recv_json()
+            print(reward_info_json)
+            current_landing_info = reward_info_json["landing_point"]
+            print(current_landing_info)
+            current_ball_racket_dist_info = reward_info_json["min_distance"]
+            print(current_ball_racket_dist_info)
+            current_hit_info = reward_info_json["hit"]
+            print(current_hit_info)
+            policy_updated_json = {"policy_ready": True}
+            self.socket.send_json(policy_updated_json)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -241,8 +288,14 @@ if __name__ == "__main__":
     parser.add_argument('--hn', default=20, type=int,
                         help="Number of neueal in each hidden layer")
 
+    parser.add_argument('--batch_num', type=int, default=10,
+                        help="Number of episodes to train the policy once")
+
+    parser.add_argument('--reuse_num', type=int, default=5,
+                        help="Number of old batches to be reused in learning")
+
     parser.add_argument('--ep_num', type=int, default=10000,
-                        help="Number of total episode to train the policy, e.g. 10000.")
+                        help="Number of total episodes to sample, e.g. 10000.")
     parser.add_argument('--save_num', type=int, default=0,
                         help="Save the Neural network parameters for every N episode, e.g. 200")
     parser.add_argument('--save_dir_file', default='/tmp/RL_NN_parameters',
